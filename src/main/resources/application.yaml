@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: deep-research
+
+
+ai:
+  config:
+    - name: deepseek
+      model: deepseek-v3
+      baseUrl: https://api.deepseek.com
+      apiKey: xxx
+    - name: gpt
+      model: gpt-5-mini
+      baseUrl: https://api.openai.com
+      apiKey: xxx
