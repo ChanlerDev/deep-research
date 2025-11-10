@@ -6,22 +6,22 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import lombok.Data;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
+
 
 /**
  * @author: Chanler
  */
 @Component
-@Data
 public class ModelHandler {
     private final ModelFactory modelFactory;
-    private final HashMap<String, ChatModel> modelPool;
-    private final HashMap<String, StreamingChatModel> streamingModelPool;
+    private final ConcurrentHashMap<String, ChatModel> modelPool;
+    private final ConcurrentHashMap<String, StreamingChatModel> streamingModelPool;
 
     public ModelHandler(ModelFactory modelFactory) {
         this.modelFactory = modelFactory;
-        this.modelPool = new HashMap<>();
-        this.streamingModelPool = new HashMap<>();
+        this.modelPool = new ConcurrentHashMap<>();
+        this.streamingModelPool = new ConcurrentHashMap<>();
     }
 
     public ChatModel getModel(String researchId) {
