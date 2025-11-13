@@ -1,0 +1,156 @@
+package dev.chanler.researcher.application.agent;
+
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.util.StrUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import dev.chanler.researcher.application.model.ModelHandler;
+import dev.chanler.researcher.application.schema.SummarySchema;
+import dev.chanler.researcher.application.state.SearchState;
+import dev.chanler.researcher.infra.client.TavilyClient;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.ResponseFormat;
+import dev.langchain4j.model.chat.request.json.JsonSchema;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.output.TokenUsage;
+import dev.langchain4j.service.output.JsonSchemas;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import static dev.chanler.researcher.application.prompt.SearchPrompts.SUMMARIZE_WEBPAGE_PROMPT;
+
+/**
+ * Search Agent - performs web search and content summarization
+ * @author: Chanler
+ */
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class SearchAgent {
+    private final ModelHandler modelHandler;
+    private final TavilyClient tavilyClient;
+    private final ObjectMapper objectMapper;
+    
+    public String run(SearchState searchState) {
+         AgentAbility agent = AgentAbility.builder()
+                .memory(MessageWindowChatMemory.withMaxMessages(100))
+                .chatModel(modelHandler.getModel(searchState.getResearchId()))
+                .streamingChatModel(modelHandler.getStreamModel(searchState.getResearchId()))
+                .build();
+            
+        plan(searchState);
+        action(agent, searchState);
+        return summarize(agent, searchState);
+    }
+    
+    private void plan(SearchState searchState) {
+        // execute Tavily search
+        TavilyClient.TavilyResponse response = tavilyClient.search(
+            searchState.getQuery(),
+            searchState.getMaxResults(),
+            searchState.getTopic(),
+            true
+        );
+        
+        if (response.results().isEmpty()) {
+            log.warn("No search results for: {}", searchState.getQuery());
+            return;
+        }
+        
+        // 利用 URL 去重
+        Map<String, TavilyClient.SearchResult> uniqueResults = new HashMap<>();
+        for (TavilyClient.SearchResult result : response.results()) {
+            if (result.url() != null && !uniqueResults.containsKey(result.url())) {
+                uniqueResults.put(result.url(), result);
+            }
+        }
+        
+        searchState.setSearchResults(uniqueResults);
+    }
+    
+    private void action(AgentAbility agent, SearchState searchState) {
+        // 空值判断
+        if (searchState.getSearchResults().isEmpty()) {
+            log.warn("No search results to process");
+            return;
+        }
+        
+        // 处理并总结结果
+        for (TavilyClient.SearchResult result : searchState.getSearchResults().values()) {
+            String content = result.rawContent() != null && !result.rawContent().isEmpty()
+                ? result.rawContent()
+                : result.content();
+            
+            if (content != null && content.length() > 500) {
+                try {
+                    SummarySchema summary = summarizeWebpage(agent, content);
+                    String formatted = StrUtil.format(
+                        "[%s]\nURL: %s\n<summary>%s</summary>\n<key_excerpts>%s</key_excerpts>",
+                        result.title(), result.url(), summary.getSummary(), summary.getKeyExcerpts()
+                    );
+                    searchState.getRawResults().add(formatted);
+                } catch (Exception e) {
+                    log.warn("Failed to summarize {}", result.url());
+                    searchState.getRawResults().add(StrUtil.format("[%s]\nURL: %s\n%s",
+                        result.title(), result.url(), result.content()));
+                }
+            } else {
+                searchState.getRawResults().add(StrUtil.format("[%s]\nURL: %s\n%s",
+                    result.title(), result.url(), content));
+            }
+        }
+    }
+    
+    private SummarySchema summarizeWebpage(AgentAbility agent, String webpageContent) {
+        try {
+            String prompt = StrUtil.format(SUMMARIZE_WEBPAGE_PROMPT, webpageContent, DateUtil.today());
+            
+            JsonSchema jsonSchema = JsonSchemas.jsonSchemaFrom(SummarySchema.class)
+                .orElseThrow(() -> new IllegalStateException("Failed to generate JSON schema"));
+            
+            ResponseFormat responseFormat = ResponseFormat.builder()
+                .jsonSchema(jsonSchema)
+                .build();
+            
+            ChatRequest chatRequest = ChatRequest.builder()
+                .messages(UserMessage.from(prompt))
+                .responseFormat(responseFormat)
+                .build();
+            
+            ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
+            TokenUsage tokenUsage = chatResponse.tokenUsage();
+            return objectMapper.readValue(chatResponse.aiMessage().text(), SummarySchema.class);
+            
+        } catch (Exception e) {
+            log.error("Webpage summarization failed", e);
+            SummarySchema fallback = new SummarySchema();
+            fallback.setSummary(webpageContent.substring(0, Math.min(1000, webpageContent.length())));
+            fallback.setKeyExcerpts("");
+            return fallback;
+        }
+    }
+    
+    private String summarize(AgentAbility agent, SearchState searchState) {
+        if (searchState.getRawResults().isEmpty()) {
+            return "No search results found for: " + searchState.getQuery();
+        }
+        
+        StringBuilder output = new StringBuilder();
+        output.append(StrUtil.format("Search results for query: '%s'\n\n", searchState.getQuery()));
+        
+        int num = 1;
+        for (String result : searchState.getRawResults()) {
+            output.append(StrUtil.format("\n--- SOURCE %d ---\n", num++));
+            output.append(result);
+            output.append("\n").append("-".repeat(80)).append("\n");
+        }
+        
+        return output.toString();
+    }
+}
