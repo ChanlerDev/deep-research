@@ -70,6 +70,7 @@ public class ResearcherAgent {
             // 1. 获取决策
             List<ToolSpecification> toolSpecifications = toolRegistry.getToolSpecifications(RESEARCHER_STAGE);
             ChatRequest chatRequest = ChatRequest.builder()
+                    .messages(agent.getMemory().messages())
                     .toolSpecifications(toolSpecifications)
                     .build();
             ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
