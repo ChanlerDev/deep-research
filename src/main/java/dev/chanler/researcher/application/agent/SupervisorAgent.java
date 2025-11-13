@@ -63,6 +63,7 @@ public class SupervisorAgent {
             List<ToolSpecification> toolSpecifications = toolRegistry.getToolSpecifications(SUPERVISOR_STAGE);
             ChatRequest chatRequest = ChatRequest.builder()
                     .toolSpecifications(toolSpecifications)
+                    .messages(agent.getMemory().messages())
                     .build();
             ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
             TokenUsage tokenUsage = chatResponse.tokenUsage();
