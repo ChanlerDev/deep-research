@@ -1,5 +1,6 @@
 package dev.chanler.researcher.application.tool.detail;
 
+import dev.chanler.researcher.application.tool.annotation.ResearcherTool;
 import dev.chanler.researcher.application.tool.annotation.SupervisorTool;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -7,6 +8,7 @@ import dev.langchain4j.agent.tool.Tool;
 /**
  * @author: Chanler
  */
+@ResearcherTool
 @SupervisorTool
 public class ThinkTool {
     @Tool("""
