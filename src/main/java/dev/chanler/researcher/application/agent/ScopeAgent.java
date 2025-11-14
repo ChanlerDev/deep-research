@@ -5,7 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.schema.ScopeSchema;
-import dev.chanler.researcher.application.state.ScopeState;
+import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.infra.util.MemoryUtil;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -34,21 +34,21 @@ public class ScopeAgent {
     private final ModelHandler modelHandler;
     private final ObjectMapper objectMapper;
 
-    public void run(ScopeState scopeState) {
+    public void run(DeepResearchState state) {
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
-                .chatModel(modelHandler.getModel(scopeState.getResearchId()))
-                .streamingChatModel(modelHandler.getStreamModel(scopeState.getResearchId()))
+                .chatModel(modelHandler.getModel(state.getResearchId()))
+                .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
                 .build();
-        clarifyUserInstructions(agent, scopeState);
-        if (scopeState.getClarifyWithUserSchema().needClarification()) {
+        clarifyUserInstructions(agent, state);
+        if (state.getClarifyWithUserSchema().needClarification()) {
             return;
         }
-        writeResearchBrief(agent, scopeState);
+        writeResearchBrief(agent, state);
     }
 
-    private void clarifyUserInstructions(AgentAbility agent, ScopeState scopeState) {
-        agent.getMemory().add(UserMessage.from(scopeState.getInput()));
+    private void clarifyUserInstructions(AgentAbility agent, DeepResearchState state) {
+        agent.getMemory().add(UserMessage.from(state.getOriginalInput()));
         String messages = MemoryUtil.toBufferString(agent.getMemory());
         UserMessage userMessage = UserMessage.from(
                 StrUtil.format(CLARIFY_WITH_USER_INSTRUCTIONS, messages, DateUtil.today()));
@@ -73,13 +73,13 @@ public class ScopeAgent {
                 agent.getMemory().add(AiMessage.from(clarifyResult.verification()));
             }
             // TODO: 推送
-            scopeState.setClarifyWithUserSchema(clarifyResult);
+            state.setClarifyWithUserSchema(clarifyResult);
         } catch (Exception e) {
             log.error("Failed to parse JSON response: {}", jsonResponse, e);
         }
     }
 
-    private void writeResearchBrief(AgentAbility agent, ScopeState scopeState) {
+    private void writeResearchBrief(AgentAbility agent, DeepResearchState state) {
         String messages = MemoryUtil.toBufferString(agent.getMemory());
         UserMessage userMessage = UserMessage.from(
                 StrUtil.format(TRANSFORM_MESSAGES_INTO_RESEARCH_TOPIC_PROMPT, messages, DateUtil.today()));
@@ -100,7 +100,7 @@ public class ScopeAgent {
                     jsonResponse, ScopeSchema.ResearchQuestion.class);
             agent.getMemory().add(AiMessage.from(researchQuestion.researchBrief()));
             // TODO: 推送
-            scopeState.setResearchQuestion(researchQuestion);
+            state.setResearchQuestion(researchQuestion);
         } catch (Exception e) {
             log.error("Failed to parse JSON response: {}", jsonResponse, e);
         }

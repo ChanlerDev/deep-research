@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.schema.SummarySchema;
-import dev.chanler.researcher.application.state.SearchState;
+import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.infra.client.TavilyClient;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
@@ -37,29 +37,29 @@ public class SearchAgent {
     private final TavilyClient tavilyClient;
     private final ObjectMapper objectMapper;
     
-    public String run(SearchState searchState) {
+    public String run(DeepResearchState state) {
          AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
-                .chatModel(modelHandler.getModel(searchState.getResearchId()))
-                .streamingChatModel(modelHandler.getStreamModel(searchState.getResearchId()))
+                .chatModel(modelHandler.getModel(state.getResearchId()))
+                .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
                 .build();
             
-        plan(searchState);
-        action(agent, searchState);
-        return summarize(agent, searchState);
+        plan(state);
+        action(agent, state);
+        return summarize(agent, state);
     }
     
-    private void plan(SearchState searchState) {
+    private void plan(DeepResearchState state) {
         // execute Tavily search
         TavilyClient.TavilyResponse response = tavilyClient.search(
-            searchState.getQuery(),
-            searchState.getMaxResults(),
-            searchState.getTopic(),
+            state.getQuery(),
+            state.getMaxResults(),
+            state.getTopic(),
             true
         );
         
         if (response.results().isEmpty()) {
-            log.warn("No search results for: {}", searchState.getQuery());
+            log.warn("No search results for: {}", state.getQuery());
             return;
         }
         
@@ -71,18 +71,18 @@ public class SearchAgent {
             }
         }
         
-        searchState.setSearchResults(uniqueResults);
+        state.setSearchResults(uniqueResults);
     }
     
-    private void action(AgentAbility agent, SearchState searchState) {
+    private void action(AgentAbility agent, DeepResearchState state) {
         // 空值判断
-        if (searchState.getSearchResults().isEmpty()) {
+        if (state.getSearchResults().isEmpty()) {
             log.warn("No search results to process");
             return;
         }
         
         // 处理并总结结果
-        for (TavilyClient.SearchResult result : searchState.getSearchResults().values()) {
+        for (TavilyClient.SearchResult result : state.getSearchResults().values()) {
             String content = result.rawContent() != null && !result.rawContent().isEmpty()
                 ? result.rawContent()
                 : result.content();
@@ -94,14 +94,14 @@ public class SearchAgent {
                         "[%s]\nURL: %s\n<summary>%s</summary>\n<key_excerpts>%s</key_excerpts>",
                         result.title(), result.url(), summary.getSummary(), summary.getKeyExcerpts()
                     );
-                    searchState.getRawResults().add(formatted);
+                    state.getSearchNotes().add(formatted);
                 } catch (Exception e) {
                     log.warn("Failed to summarize {}", result.url());
-                    searchState.getRawResults().add(StrUtil.format("[%s]\nURL: %s\n%s",
+                    state.getSearchNotes().add(StrUtil.format("[%s]\nURL: %s\n%s",
                         result.title(), result.url(), result.content()));
                 }
             } else {
-                searchState.getRawResults().add(StrUtil.format("[%s]\nURL: %s\n%s",
+                state.getSearchNotes().add(StrUtil.format("[%s]\nURL: %s\n%s",
                     result.title(), result.url(), content));
             }
         }
@@ -136,16 +136,16 @@ public class SearchAgent {
         }
     }
     
-    private String summarize(AgentAbility agent, SearchState searchState) {
-        if (searchState.getRawResults().isEmpty()) {
-            return "No search results found for: " + searchState.getQuery();
+    private String summarize(AgentAbility agent, DeepResearchState state) {
+        if (state.getSearchNotes().isEmpty()) {
+            return "No search results found for: " + state.getQuery();
         }
         
         StringBuilder output = new StringBuilder();
-        output.append(StrUtil.format("Search results for query: '%s'\n\n", searchState.getQuery()));
+        output.append(StrUtil.format("Search results for query: '%s'\n\n", state.getQuery()));
         
         int num = 1;
-        for (String result : searchState.getRawResults()) {
+        for (String result : state.getSearchNotes()) {
             output.append(StrUtil.format("\n--- SOURCE %d ---\n", num++));
             output.append(result);
             output.append("\n").append("-".repeat(80)).append("\n");

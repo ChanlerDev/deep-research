@@ -4,8 +4,7 @@ import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.chanler.researcher.application.model.ModelHandler;
-import dev.chanler.researcher.application.state.ResearcherState;
-import dev.chanler.researcher.application.state.SearchState;
+import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.application.tool.annotation.ResearcherTool;
 import dev.chanler.researcher.application.tool.ToolRegistry;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -45,28 +44,28 @@ public class ResearcherAgent {
 
     private static final String RESEARCHER_STAGE = ResearcherTool.class.getSimpleName();
 
-    public String run(ResearcherState researcherState) {
-        log.info("ResearcherAgent run: researchId='{}', topic='{}'", researcherState.getResearchId(), researcherState.getResearchTopic());
+    public String run(DeepResearchState state) {
+        log.info("ResearcherAgent run: researchId='{}', topic='{}'", state.getResearchId(), state.getResearchTopic());
         
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
-                .chatModel(modelHandler.getModel(researcherState.getResearchId()))
-                .streamingChatModel(modelHandler.getStreamModel(researcherState.getResearchId()))
+                .chatModel(modelHandler.getModel(state.getResearchId()))
+                .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
                 .build();
         
         SystemMessage systemMessage = SystemMessage.from(
             StrUtil.format(RESEARCH_AGENT_PROMPT, DateUtil.today())
         );
         agent.getMemory().add(systemMessage);
-        agent.getMemory().add(UserMessage.from(researcherState.getResearchTopic()));
+        agent.getMemory().add(UserMessage.from(state.getResearchTopic()));
         
-        plan(agent, researcherState);
-        return compressResearch(agent, researcherState);
+        plan(agent, state);
+        return compressResearch(agent, state);
     }
 
-    private void plan(AgentAbility agent, ResearcherState researcherState) {
+    private void plan(AgentAbility agent, DeepResearchState state) {
         
-        while (researcherState.getResearchIterations() < max_researcher_iterations) {
+        while (state.getResearcherIterations() < max_researcher_iterations) {
             // 1. 获取决策
             List<ToolSpecification> toolSpecifications = toolRegistry.getToolSpecifications(RESEARCHER_STAGE);
             ChatRequest chatRequest = ChatRequest.builder()
@@ -78,18 +77,18 @@ public class ResearcherAgent {
             agent.getMemory().add(chatResponse.aiMessage());
 
             // 2. 执行工具
-            action(agent, chatResponse.aiMessage().toolExecutionRequests(), researcherState);
+            action(agent, chatResponse.aiMessage().toolExecutionRequests(), state);
             
             // 3. 检查是否继续
             if (!chatResponse.aiMessage().hasToolExecutionRequests()) {
                 break;
             }
             
-            researcherState.setResearchIterations(researcherState.getResearchIterations() + 1);
+            state.setResearcherIterations(state.getResearcherIterations() + 1);
         }
     }
 
-    private void action(AgentAbility agent, List<ToolExecutionRequest> toolExecutionRequests, ResearcherState researcherState) {
+    private void action(AgentAbility agent, List<ToolExecutionRequest> toolExecutionRequests, DeepResearchState state) {
         if (toolExecutionRequests == null || toolExecutionRequests.isEmpty()) {
             return;
         }
@@ -104,16 +103,14 @@ public class ResearcherAgent {
                     int maxResults = argsNode.has("maxResults") ? argsNode.get("maxResults").asInt() : 3;
                     String topic = argsNode.has("topic") ? argsNode.get("topic").asText() : "general";
                     
-                    SearchState searchState = SearchState.builder()
-                        .researchId(researcherState.getResearchId())
-                        .query(query)
-                        .maxResults(maxResults)
-                        .topic(topic)
-                        .rawResults(new ArrayList<>())
-                        .searchResults(new HashMap<>())
-                        .build();
+                    // 设置 search 相关字段
+                    state.setQuery(query);
+                    state.setMaxResults(maxResults);
+                    state.setTopic(topic);
+                    state.setSearchResults(new HashMap<>());
+                    state.setSearchNotes(new ArrayList<>());
                     
-                    result = searchAgent.run(searchState);
+                    result = searchAgent.run(state);
                 } catch (Exception e) {
                     log.error("Failed to parse tavilySearch arguments", e);
                     continue;
@@ -128,20 +125,20 @@ public class ResearcherAgent {
             }
             
             // 收集 rawNotes 即工具执行结果 ThinkTool 和 Search 结果
-            researcherState.getRawNotes().add(String.format("[%s] %s", toolExecutionRequest.name(), result));
+            state.getResearcherNotes().add(String.format("[%s] %s", toolExecutionRequest.name(), result));
             
             agent.getMemory().add(ToolExecutionResultMessage.from(toolExecutionRequest, result));
         }
     }
 
-    private String compressResearch(AgentAbility agent, ResearcherState researcherState) {
+    private String compressResearch(AgentAbility agent, DeepResearchState state) {
         String systemPrompt = StrUtil.format(COMPRESS_RESEARCH_SYSTEM_PROMPT, DateUtil.today());
         
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(systemPrompt));
         // 跳过前两条（ResearcherAgent 的 system + user），只保留工具调用历史
         messages.addAll(agent.getMemory().messages().stream().skip(2).collect(Collectors.toList()));
-        messages.add(UserMessage.from(StrUtil.format(COMPRESS_RESEARCH_HUMAN_MESSAGE, researcherState.getResearchTopic())));
+        messages.add(UserMessage.from(StrUtil.format(COMPRESS_RESEARCH_HUMAN_MESSAGE, state.getResearchTopic())));
         
         ChatRequest compressRequest = ChatRequest.builder()
                 .messages(messages)
@@ -151,7 +148,7 @@ public class ResearcherAgent {
         TokenUsage tokenUsage = compressResponse.tokenUsage();
         String compressedResearch = compressResponse.aiMessage().text();
         
-        researcherState.setCompressedResearch(compressedResearch);
+        state.setCompressedResearch(compressedResearch);
         
         return compressedResearch;
     }

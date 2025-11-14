@@ -4,11 +4,8 @@ import org.springframework.stereotype.Component;
 
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.json.ObjectMapper;
 import dev.chanler.researcher.application.model.ModelHandler;
-import dev.chanler.researcher.application.state.ReportState;
-import dev.chanler.researcher.application.tool.ToolRegistry;
-import dev.langchain4j.data.message.SystemMessage;
+import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -28,33 +25,31 @@ import static dev.chanler.researcher.application.prompt.ReportPrompts.REPORT_AGE
 @Slf4j
 public class ReportAgent {
     private final ModelHandler modelHandler;
-    private final ToolRegistry toolRegistry;
-    private final ObjectMapper objectMapper;
 
-    public String run(ReportState reportState) {
+    public String run(DeepResearchState state) {
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
-                .chatModel(modelHandler.getModel(reportState.getResearchId()))
-                .streamingChatModel(modelHandler.getStreamModel(reportState.getResearchId()))
+                .chatModel(modelHandler.getModel(state.getResearchId()))
+                .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
                 .build();
         UserMessage userMessage = UserMessage.from(
             StrUtil.format(REPORT_AGENT_PROMPT,
-                reportState.getResearchBrief(),
+                state.getResearchBrief(),
                 DateUtil.today(),
-                StrUtil.join("\n", reportState.getNotes())
+                StrUtil.join("\n", state.getSupervisorNotes())
         ));
         agent.getMemory().add(userMessage);
-        action(agent, reportState);
-        return reportState.getReport();
+        action(agent, state);
+        return state.getReport();
     }
 
-    public void action(AgentAbility agent, ReportState reportState) {
+    public void action(AgentAbility agent, DeepResearchState state) {
         ChatRequest chatRequest = ChatRequest.builder()
                 .messages(agent.getMemory().messages())
                 .build();
         ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
         TokenUsage tokenUsage = chatResponse.tokenUsage();
         agent.getMemory().add(chatResponse.aiMessage());
-        reportState.setReport(chatResponse.aiMessage().text());
+        state.setReport(chatResponse.aiMessage().text());
     }
 }

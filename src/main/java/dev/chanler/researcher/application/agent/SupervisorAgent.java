@@ -5,8 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import dev.chanler.researcher.application.model.ModelHandler;
-import dev.chanler.researcher.application.state.ResearcherState;
-import dev.chanler.researcher.application.state.SupervisorState;
+import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.application.tool.annotation.SupervisorTool;
 import dev.chanler.researcher.application.tool.ToolRegistry;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -44,21 +43,21 @@ public class SupervisorAgent {
 
     private static final String SUPERVISOR_STAGE = SupervisorTool.class.getSimpleName();
 
-    public void run(SupervisorState supervisorState) {
+    public void run(DeepResearchState state) {
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
-                .chatModel(modelHandler.getModel(supervisorState.getResearchId()))
-                .streamingChatModel(modelHandler.getStreamModel(supervisorState.getResearchId()))
+                .chatModel(modelHandler.getModel(state.getResearchId()))
+                .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
                 .build();
         SystemMessage systemMessage = SystemMessage.from(
                 StrUtil.format(LEAD_RESEARCHER_PROMPT,DateUtil.today(), max_concurrent_research_units, max_researcher_iterations));
         agent.getMemory().add(systemMessage);
-        agent.getMemory().add(UserMessage.from(supervisorState.getResearchBrief()));
-        plan(agent, supervisorState);
+        agent.getMemory().add(UserMessage.from(state.getResearchBrief()));
+        plan(agent, state);
     }
 
-    private void plan(AgentAbility agent, SupervisorState supervisorState) {
-        while (supervisorState.getResearchIterations() < max_researcher_iterations) {
+    private void plan(AgentAbility agent, DeepResearchState state) {
+        while (state.getSupervisorIterations() < max_researcher_iterations) {
             // 1. 获取决策
             List<ToolSpecification> toolSpecifications = toolRegistry.getToolSpecifications(SUPERVISOR_STAGE);
             ChatRequest chatRequest = ChatRequest.builder()
@@ -70,7 +69,7 @@ public class SupervisorAgent {
             agent.getMemory().add(chatResponse.aiMessage());
 
             // 2. 执行工具
-            action(agent, chatResponse.aiMessage().toolExecutionRequests(), supervisorState);
+            action(agent, chatResponse.aiMessage().toolExecutionRequests(), state);
             
             // 3. 是否终止
             if (!chatResponse.aiMessage().hasToolExecutionRequests()) {
@@ -81,11 +80,11 @@ public class SupervisorAgent {
                 break;
             }
             
-            supervisorState.setResearchIterations(supervisorState.getResearchIterations() + 1);
+            state.setSupervisorIterations(state.getSupervisorIterations() + 1);
         }
     }
 
-    private void action(AgentAbility agent, List<ToolExecutionRequest> toolExecutionRequests, SupervisorState supervisorState) {
+    private void action(AgentAbility agent, List<ToolExecutionRequest> toolExecutionRequests, DeepResearchState state) {
         if (toolExecutionRequests == null || toolExecutionRequests.isEmpty()) {
             return;
         }
@@ -102,14 +101,12 @@ public class SupervisorAgent {
                     continue;
                 }
                 
-                ResearcherState researcherState = ResearcherState.builder()
-                        .researchId(supervisorState.getResearchId())
-                        .researchTopic(researchTopic)
-                        .researchIterations(0)
-                        .rawNotes(new ArrayList<>())
-                        .build();
+                // 设置 researcher 相关字段
+                state.setResearchTopic(researchTopic);
+                state.setResearcherIterations(0);
+                state.setResearcherNotes(new ArrayList<>());
                 
-                result = researcherAgent.run(researcherState);
+                result = researcherAgent.run(state);
             } else {
                 var executor = toolRegistry.getExecutor(toolExecutionRequest.name());
                 if (executor == null) {
@@ -121,7 +118,7 @@ public class SupervisorAgent {
             
             if (toolExecutionRequest.name().equals("thinkTool") 
                     || toolExecutionRequest.name().equals("conductResearch")) {
-                supervisorState.getNotes().add(result);
+                state.getSupervisorNotes().add(result);
             }
             
             agent.getMemory().add(ToolExecutionResultMessage.from(toolExecutionRequest, result));
