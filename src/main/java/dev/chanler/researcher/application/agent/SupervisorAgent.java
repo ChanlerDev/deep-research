@@ -1,12 +1,13 @@
 package dev.chanler.researcher.application.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
+import dev.chanler.researcher.application.data.WorkflowStatus;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.application.tool.annotation.SupervisorTool;
+import dev.chanler.researcher.infra.exception.WorkflowException;
 import dev.chanler.researcher.application.tool.ToolRegistry;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -44,6 +45,7 @@ public class SupervisorAgent {
     private static final String SUPERVISOR_STAGE = SupervisorTool.class.getSimpleName();
 
     public void run(DeepResearchState state) {
+        state.setStatus(WorkflowStatus.IN_RESEARCH);
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
                 .chatModel(modelHandler.getModel(state.getResearchId()))
@@ -98,7 +100,7 @@ public class SupervisorAgent {
                     researchTopic = argsNode.get("researchTopic").asText();
                 } catch (Exception e) {
                     log.error("Failed to parse conductResearch arguments", e);
-                    continue;
+                    throw new WorkflowException("Failed to parse conductResearch arguments", e);
                 }
                 
                 // 设置 researcher 相关字段

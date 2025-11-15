@@ -19,6 +19,7 @@ public class DeepResearchState {
     // === 基础信息 ===
     private String researchId;
     private String originalInput;
+    private String status;
 
     // === Scope 阶段产物 ===
     private ScopeSchema.ClarifyWithUserSchema clarifyWithUserSchema;

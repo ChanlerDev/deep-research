@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.application.tool.annotation.ResearcherTool;
+import dev.chanler.researcher.infra.exception.WorkflowException;
 import dev.chanler.researcher.application.tool.ToolRegistry;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -109,11 +110,11 @@ public class ResearcherAgent {
                     state.setTopic(topic);
                     state.setSearchResults(new HashMap<>());
                     state.setSearchNotes(new ArrayList<>());
-                    
+
                     result = searchAgent.run(state);
                 } catch (Exception e) {
                     log.error("Failed to parse tavilySearch arguments", e);
-                    continue;
+                    throw new WorkflowException("Failed to parse tavilySearch arguments", e);
                 }
             } else {
                 var executor = toolRegistry.getExecutor(toolExecutionRequest.name());

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.schema.ScopeSchema;
 import dev.chanler.researcher.application.state.DeepResearchState;
+import dev.chanler.researcher.application.data.WorkflowStatus;
 import dev.chanler.researcher.infra.util.MemoryUtil;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -35,6 +36,7 @@ public class ScopeAgent {
     private final ObjectMapper objectMapper;
 
     public void run(DeepResearchState state) {
+        state.setStatus(WorkflowStatus.IN_SCOPE);
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
                 .chatModel(modelHandler.getModel(state.getResearchId()))
@@ -69,6 +71,7 @@ public class ScopeAgent {
                     jsonResponse, ScopeSchema.ClarifyWithUserSchema.class);
             if (clarifyResult.needClarification()) {
                 agent.getMemory().add(AiMessage.from(clarifyResult.question()));
+                state.setStatus(WorkflowStatus.NEED_CLARIFICATION);
             } else {
                 agent.getMemory().add(AiMessage.from(clarifyResult.verification()));
             }
@@ -76,6 +79,7 @@ public class ScopeAgent {
             state.setClarifyWithUserSchema(clarifyResult);
         } catch (Exception e) {
             log.error("Failed to parse JSON response: {}", jsonResponse, e);
+            state.setStatus(WorkflowStatus.FAILED);
         }
     }
 
@@ -101,8 +105,11 @@ public class ScopeAgent {
             agent.getMemory().add(AiMessage.from(researchQuestion.researchBrief()));
             // TODO: 推送
             state.setResearchQuestion(researchQuestion);
+            String researchBrief = researchQuestion.researchBrief();
+            state.setResearchBrief(researchBrief);
         } catch (Exception e) {
             log.error("Failed to parse JSON response: {}", jsonResponse, e);
+            state.setStatus(WorkflowStatus.FAILED);
         }
     }
 }

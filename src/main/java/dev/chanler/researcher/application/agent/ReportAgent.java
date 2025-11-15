@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
+import dev.chanler.researcher.application.data.WorkflowStatus;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.langchain4j.data.message.UserMessage;
@@ -27,6 +28,7 @@ public class ReportAgent {
     private final ModelHandler modelHandler;
 
     public String run(DeepResearchState state) {
+        state.setStatus(WorkflowStatus.IN_REPORT);
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
                 .chatModel(modelHandler.getModel(state.getResearchId()))
