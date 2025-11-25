@@ -3,6 +3,7 @@ package dev.chanler.researcher.interfaces.controller;
 import dev.chanler.researcher.domain.entity.ChatMessage;
 import dev.chanler.researcher.infra.common.Result;
 import dev.chanler.researcher.infra.common.Results;
+import dev.chanler.researcher.infra.sse.SseHub;
 import dev.chanler.researcher.interfaces.dto.req.SendMessageReqDTO;
 import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchMessageRespDTO;
@@ -25,7 +26,7 @@ import java.util.List;
 public class ResearchController {
 
     private final ResearchService researchService;
-//    private final SSEHub sseHub;
+    private final SseHub sseHub;
 
     @GetMapping("/create")
     public Result<CreateResearchRespDTO> createResearch(
@@ -52,9 +53,11 @@ public class ResearchController {
         return Results.success(researchService.sendMessage(userId, researchId, sendMessageReqDTO));
     }
 
-//    @GetMapping("/sse")
-//    public SseEmitter stream(@RequestHeader("X-User-Id") Integer userId,
-//            @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
-//        return sseHub.connect(userId, null, lastEventId);
-//    }
+    @GetMapping("/sse")
+    public SseEmitter stream(@RequestHeader("X-User-Id") Integer userId,
+             @RequestHeader("X-Research-Id") String researchId,
+            @RequestHeader("X-Client-Id") String clientId, // 前端记得分配
+            @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
+        return sseHub.connect(userId, researchId, clientId, lastEventId);
+    }
 }

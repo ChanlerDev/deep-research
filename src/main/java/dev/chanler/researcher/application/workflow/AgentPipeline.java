@@ -7,6 +7,7 @@ import dev.chanler.researcher.application.data.PipelineIn;
 import dev.chanler.researcher.application.data.WorkflowStatus;
 import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.infra.exception.WorkflowException;
+import dev.chanler.researcher.infra.util.SequenceUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -24,6 +25,7 @@ public class AgentPipeline {
     private final ScopeAgent scopeAgent;
     private final SupervisorAgent supervisorAgent;
     private final ReportAgent reportAgent;
+    private final SequenceUtil sequenceUtil;
 
     // TODO: 应当是传入 DeepResearchState，在 Service 层查询对应 id 的 State，没有就创建
     // TODO：后续应当支持接着发送消息，而非只能启动一次研究
@@ -93,7 +95,10 @@ public class AgentPipeline {
             log.info("Final report generated for researchId={}", pipelineIn.getResearchId());
         } catch (WorkflowException e) {
             state.setStatus(WorkflowStatus.FAILED);
+            // TODO: 保存失败状态，更新 ResearchSession
             log.error("Workflow failed for researchId={}", pipelineIn.getResearchId(), e);
+        } finally {
+            sequenceUtil.reset(pipelineIn.getResearchId());
         }
     }
 }
