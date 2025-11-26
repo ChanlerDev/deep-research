@@ -10,10 +10,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author: Chanler
@@ -24,9 +31,44 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SseHub {
 
     private static final Long SSE_TIMEOUT_MS = 0L;
+    private static final long HEARTBEAT_INTERVAL_MS = 30_000L;  // 30秒心跳
+
     // researchId -> (clientId -> emitter)
     private final Map<String, Map<String, SseEmitter>> researchEmitters = new ConcurrentHashMap<>();
     private final CacheUtil cacheUtil;
+    private ScheduledExecutorService heartbeatScheduler;
+
+    @PostConstruct
+    public void init() {
+        heartbeatScheduler = Executors.newSingleThreadScheduledExecutor();
+        heartbeatScheduler.scheduleAtFixedRate(this::sendHeartbeat,
+                HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    @PreDestroy
+    public void destroy() {
+        if (heartbeatScheduler != null) {
+            heartbeatScheduler.shutdown();
+        }
+    }
+
+    private void sendHeartbeat() {
+        List<String[]> toRemove = new ArrayList<>();
+        for (Map.Entry<String, Map<String, SseEmitter>> research : researchEmitters.entrySet()) {
+            String researchId = research.getKey();
+            for (Map.Entry<String, SseEmitter> client : research.getValue().entrySet()) {
+                String clientId = client.getKey();
+                SseEmitter emitter = client.getValue();
+                try {
+                    emitter.send(SseEmitter.event().comment("heartbeat"));
+                } catch (IOException e) {
+                    log.debug("心跳失败，移除连接 researchId={}, clientId={}", researchId, clientId);
+                    toRemove.add(new String[]{researchId, clientId});
+                }
+            }
+        }
+        toRemove.forEach(pair -> remove(pair[0], pair[1]));
+    }
 
     public SseEmitter connect(Integer userId, String researchId, String clientId, String lastEventId) {
         // TODO: 权限校验
@@ -81,7 +123,6 @@ public class SseHub {
             } catch (IOException e) {
                 log.error("SSE 时间线推送失败，researchId={}, clientId={}", researchId, clientId, e);
                 remove(researchId, clientId);
-                // 关闭
             }
         }
     }
@@ -136,6 +177,23 @@ public class SseHub {
             } catch (IOException e) {
                 log.error("重放失败 userId={}, researchId={}", userId, researchId, e);
                 break;
+            }
+        }
+    }
+
+    public void complete(String researchId, String finalStatus) {
+        Map<String, SseEmitter> clients = researchEmitters.get(researchId);
+        if (CollectionUtil.isEmpty(clients)) {
+            return;
+        }
+        for (Map.Entry<String, SseEmitter> entry : clients.entrySet()) {
+            SseEmitter emitter = entry.getValue();
+            try {
+                emitter.send(SseEmitter.event()
+                        .data("[DONE] " + finalStatus));
+                emitter.complete();
+            } catch (IOException e) {
+                log.warn("SSE 结束失败", e);
             }
         }
     }
