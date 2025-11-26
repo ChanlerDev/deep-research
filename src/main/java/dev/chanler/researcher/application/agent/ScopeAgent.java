@@ -3,10 +3,12 @@ package dev.chanler.researcher.application.agent;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.chanler.researcher.infra.data.EventType;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.schema.ScopeSchema;
 import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.application.data.WorkflowStatus;
+import dev.chanler.researcher.infra.util.EventPublisher;
 import dev.chanler.researcher.infra.util.MemoryUtil;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -34,9 +36,13 @@ import static dev.chanler.researcher.application.prompt.ScopePrompts.TRANSFORM_M
 public class ScopeAgent {
     private final ModelHandler modelHandler;
     private final ObjectMapper objectMapper;
+    private final EventPublisher eventPublisher;
 
     public void run(DeepResearchState state) {
         state.setStatus(WorkflowStatus.IN_SCOPE);
+        Long scopeEventId = eventPublisher.publishEvent(state.getResearchId(), 
+                EventType.SCOPE, "正在分析您的研究需求...", state.getOriginalInput());
+        state.setCurrentScopeEventId(scopeEventId);
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
                 .chatModel(modelHandler.getModel(state.getResearchId()))
@@ -65,6 +71,8 @@ public class ScopeAgent {
                 .build();
         ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
         TokenUsage tokenUsage = chatResponse.tokenUsage();
+        state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
+        state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());
         String jsonResponse = chatResponse.aiMessage().text();
         try {
             ScopeSchema.ClarifyWithUserSchema clarifyResult = objectMapper.readValue(
@@ -72,14 +80,19 @@ public class ScopeAgent {
             if (clarifyResult.needClarification()) {
                 agent.getMemory().add(AiMessage.from(clarifyResult.question()));
                 state.setStatus(WorkflowStatus.NEED_CLARIFICATION);
+                eventPublisher.publishEvent(state.getResearchId(), EventType.SCOPE,
+                        "需要您提供更多信息", clarifyResult.question(), state.getCurrentScopeEventId());
+                eventPublisher.publishMessage(state.getResearchId(), "assistant", clarifyResult.question());
             } else {
                 agent.getMemory().add(AiMessage.from(clarifyResult.verification()));
+                eventPublisher.publishEvent(state.getResearchId(), EventType.SCOPE,
+                        "研究需求已明确", clarifyResult.verification(), state.getCurrentScopeEventId());
             }
-            // TODO: 推送
             state.setClarifyWithUserSchema(clarifyResult);
         } catch (Exception e) {
             log.error("Failed to parse JSON response: {}", jsonResponse, e);
             state.setStatus(WorkflowStatus.FAILED);
+            return; // 失败后直接返回
         }
     }
 
@@ -98,12 +111,15 @@ public class ScopeAgent {
                 .build();
         ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
         TokenUsage tokenUsage = chatResponse.tokenUsage();
+        state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
+        state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());
         String jsonResponse = chatResponse.aiMessage().text();
         try {
             ScopeSchema.ResearchQuestion researchQuestion = objectMapper.readValue(
                     jsonResponse, ScopeSchema.ResearchQuestion.class);
             agent.getMemory().add(AiMessage.from(researchQuestion.researchBrief()));
-            // TODO: 推送
+            eventPublisher.publishEvent(state.getResearchId(), EventType.SCOPE,
+                    "已制定研究计划", researchQuestion.researchBrief(), state.getCurrentScopeEventId());
             state.setResearchQuestion(researchQuestion);
             String researchBrief = researchQuestion.researchBrief();
             state.setResearchBrief(researchBrief);

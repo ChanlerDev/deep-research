@@ -3,7 +3,9 @@ package dev.chanler.researcher.application.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
+import dev.chanler.researcher.infra.data.EventType;
 import dev.chanler.researcher.application.data.WorkflowStatus;
+import dev.chanler.researcher.infra.util.EventPublisher;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.application.tool.annotation.SupervisorTool;
@@ -39,6 +41,7 @@ public class SupervisorAgent {
     private final ObjectMapper objectMapper;
     private final ToolRegistry toolRegistry;
     private final ResearcherAgent researcherAgent;
+    private final EventPublisher eventPublisher;
     private Integer max_concurrent_research_units = 3;
     private Integer max_researcher_iterations = 6;
 
@@ -46,6 +49,9 @@ public class SupervisorAgent {
 
     public void run(DeepResearchState state) {
         state.setStatus(WorkflowStatus.IN_RESEARCH);
+        Long supervisorEventId = eventPublisher.publishEvent(state.getResearchId(), 
+                EventType.SUPERVISOR, "开始规划研究路线...", state.getResearchBrief());
+        state.setCurrentSupervisorEventId(supervisorEventId);
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
                 .chatModel(modelHandler.getModel(state.getResearchId()))
@@ -68,6 +74,8 @@ public class SupervisorAgent {
                     .build();
             ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
             TokenUsage tokenUsage = chatResponse.tokenUsage();
+            state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
+            state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());
             agent.getMemory().add(chatResponse.aiMessage());
 
             // 2. 执行工具
@@ -103,6 +111,10 @@ public class SupervisorAgent {
                     throw new WorkflowException("Failed to parse conductResearch arguments", e);
                 }
                 
+                Long planEventId = eventPublisher.publishEvent(state.getResearchId(), EventType.SUPERVISOR,
+                        "正在研究: " + researchTopic, null, state.getCurrentSupervisorEventId());
+                state.setCurrentResearchEventId(planEventId);
+                
                 // 设置 researcher 相关字段
                 state.setResearchTopic(researchTopic);
                 state.setResearcherIterations(0);
@@ -118,8 +130,11 @@ public class SupervisorAgent {
                 result = executor.execute(toolExecutionRequest, null);
             }
             
-            if (toolExecutionRequest.name().equals("thinkTool") 
-                    || toolExecutionRequest.name().equals("conductResearch")) {
+            if (toolExecutionRequest.name().equals("thinkTool")) {
+                eventPublisher.publishEvent(state.getResearchId(), EventType.SUPERVISOR,
+                        "思考中...", result, state.getCurrentSupervisorEventId());
+                state.getSupervisorNotes().add(result);
+            } else if (toolExecutionRequest.name().equals("conductResearch")) {
                 state.getSupervisorNotes().add(result);
             }
             

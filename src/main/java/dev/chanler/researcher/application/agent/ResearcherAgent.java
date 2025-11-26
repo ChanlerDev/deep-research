@@ -3,8 +3,10 @@ package dev.chanler.researcher.application.agent;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.chanler.researcher.infra.data.EventType;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.state.DeepResearchState;
+import dev.chanler.researcher.infra.util.EventPublisher;
 import dev.chanler.researcher.application.tool.annotation.ResearcherTool;
 import dev.chanler.researcher.infra.exception.WorkflowException;
 import dev.chanler.researcher.application.tool.ToolRegistry;
@@ -41,12 +43,16 @@ public class ResearcherAgent {
     private final ToolRegistry toolRegistry;
     private final ObjectMapper objectMapper;
     private final SearchAgent searchAgent;
+    private final EventPublisher eventPublisher;
     private Integer max_researcher_iterations = 10;
 
     private static final String RESEARCHER_STAGE = ResearcherTool.class.getSimpleName();
 
     public String run(DeepResearchState state) {
         log.info("ResearcherAgent run: researchId='{}', topic='{}'", state.getResearchId(), state.getResearchTopic());
+        Long researchEventId = eventPublisher.publishEvent(state.getResearchId(), EventType.RESEARCH,
+                "深入研究: " + state.getResearchTopic(), null, state.getCurrentResearchEventId());
+        state.setCurrentResearchEventId(researchEventId);
         
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
@@ -75,6 +81,8 @@ public class ResearcherAgent {
                     .build();
             ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
             TokenUsage tokenUsage = chatResponse.tokenUsage();
+            state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
+            state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());
             agent.getMemory().add(chatResponse.aiMessage());
 
             // 2. 执行工具
@@ -126,6 +134,10 @@ public class ResearcherAgent {
             }
             
             // 收集 rawNotes 即工具执行结果 ThinkTool 和 Search 结果
+            if ("thinkTool".equals(toolExecutionRequest.name())) {
+                eventPublisher.publishEvent(state.getResearchId(), EventType.RESEARCH,
+                        "分析中...", result, state.getCurrentResearchEventId());
+            }
             state.getResearcherNotes().add(String.format("[%s] %s", toolExecutionRequest.name(), result));
             
             agent.getMemory().add(ToolExecutionResultMessage.from(toolExecutionRequest, result));
@@ -147,9 +159,13 @@ public class ResearcherAgent {
         
         ChatResponse compressResponse = agent.getChatModel().doChat(compressRequest);
         TokenUsage tokenUsage = compressResponse.tokenUsage();
+        state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
+        state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());
         String compressedResearch = compressResponse.aiMessage().text();
         
         state.setCompressedResearch(compressedResearch);
+        eventPublisher.publishEvent(state.getResearchId(), EventType.RESEARCH,
+                "已完成该主题研究", compressedResearch.substring(0, Math.min(200, compressedResearch.length())) + "...", state.getCurrentResearchEventId());
         
         return compressedResearch;
     }

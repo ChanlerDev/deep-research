@@ -3,8 +3,9 @@ package dev.chanler.researcher.application.agent;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import dev.chanler.researcher.infra.data.EventType;
 import dev.chanler.researcher.application.model.ModelHandler;
+import dev.chanler.researcher.infra.util.EventPublisher;
 import dev.chanler.researcher.application.schema.SummarySchema;
 import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.infra.client.TavilyClient;
@@ -36,9 +37,14 @@ public class SearchAgent {
     private final ModelHandler modelHandler;
     private final TavilyClient tavilyClient;
     private final ObjectMapper objectMapper;
+    private final EventPublisher eventPublisher;
     
     public String run(DeepResearchState state) {
-         AgentAbility agent = AgentAbility.builder()
+        Long searchEventId = eventPublisher.publishEvent(state.getResearchId(), EventType.SEARCH,
+                "正在搜索: " + state.getQuery(), null, state.getCurrentResearchEventId());
+        state.setCurrentSearchEventId(searchEventId);
+        
+        AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
                 .chatModel(modelHandler.getModel(state.getResearchId()))
                 .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
@@ -72,6 +78,8 @@ public class SearchAgent {
         }
         
         state.setSearchResults(uniqueResults);
+        eventPublisher.publishEvent(state.getResearchId(), EventType.SEARCH,
+                "找到 " + uniqueResults.size() + " 个相关结果", null, state.getCurrentSearchEventId());
     }
     
     private void action(AgentAbility agent, DeepResearchState state) {
@@ -89,7 +97,7 @@ public class SearchAgent {
             
             if (content != null && content.length() > 500) {
                 try {
-                    SummarySchema summary = summarizeWebpage(agent, content);
+                    SummarySchema summary = summarizeWebpage(agent, state, content);
                     String formatted = StrUtil.format(
                         "[%s]\nURL: %s\n<summary>%s</summary>\n<key_excerpts>%s</key_excerpts>",
                         result.title(), result.url(), summary.getSummary(), summary.getKeyExcerpts()
@@ -107,7 +115,7 @@ public class SearchAgent {
         }
     }
     
-    private SummarySchema summarizeWebpage(AgentAbility agent, String webpageContent) {
+    private SummarySchema summarizeWebpage(AgentAbility agent, DeepResearchState state, String webpageContent) {
         try {
             String prompt = StrUtil.format(SUMMARIZE_WEBPAGE_PROMPT, webpageContent, DateUtil.today());
             
@@ -125,6 +133,8 @@ public class SearchAgent {
             
             ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
             TokenUsage tokenUsage = chatResponse.tokenUsage();
+            state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
+            state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());
             return objectMapper.readValue(chatResponse.aiMessage().text(), SummarySchema.class);
             
         } catch (Exception e) {
@@ -140,6 +150,8 @@ public class SearchAgent {
         if (state.getSearchNotes().isEmpty()) {
             return "No search results found for: " + state.getQuery();
         }
+        eventPublisher.publishEvent(state.getResearchId(), EventType.SEARCH,
+                "已分析并整理搜索结果", null, state.getCurrentSearchEventId());
         
         StringBuilder output = new StringBuilder();
         output.append(StrUtil.format("Search results for query: '%s'\n\n", state.getQuery()));
