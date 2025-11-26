@@ -27,4 +27,6 @@ public class ResearchSession {
     private LocalDateTime startTime;
     private LocalDateTime updateTime;
     private LocalDateTime completeTime;
+    private Long totalInputTokens;
+    private Long totalOutputTokens;
 }

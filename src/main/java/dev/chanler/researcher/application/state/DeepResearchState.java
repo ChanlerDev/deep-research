@@ -45,4 +45,14 @@ public class DeepResearchState {
 
     // === Report 阶段 ===
     private String report;
+
+    // === 事件层级追踪 (用于 parentEventId) ===
+    private Long currentScopeEventId;
+    private Long currentSupervisorEventId;
+    private Long currentResearchEventId;
+    private Long currentSearchEventId;
+
+    // === Token 统计 ===
+    private Long totalInputTokens;
+    private Long totalOutputTokens;
 }
