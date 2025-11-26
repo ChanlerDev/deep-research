@@ -61,13 +61,12 @@ public class CacheUtil {
         return item;
     }
 
-    public TimelineItem saveEvent(String researchId, String type, String status,
+    public TimelineItem saveEvent(String researchId, String type,
                                     String title, String content, Long parentEventId) {
         int seq = sequenceUtil.next(researchId);
         WorkflowEvent event = WorkflowEvent.builder()
                 .researchId(researchId)
                 .type(type)
-                .status(status)
                 .title(title)
                 .content(content)
                 .parentEventId(parentEventId)

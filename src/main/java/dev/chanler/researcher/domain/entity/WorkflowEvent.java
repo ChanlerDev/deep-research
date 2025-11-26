@@ -22,7 +22,6 @@ public class WorkflowEvent {
     private Long id;
     private String researchId;
     private String type;
-    private String status;
     private String title;
     private String content;
     private Long parentEventId;
