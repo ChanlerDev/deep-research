@@ -31,4 +31,13 @@ public interface ResearchSessionMapper extends BaseMapper<ResearchSession> {
     void updateSession(@Param("id") String id, @Param("status") String status,
                        @Param("setStartTime") boolean setStartTime, @Param("setCompleteTime") boolean setCompleteTime,
                        @Param("inputTokens") long inputTokens, @Param("outputTokens") long outputTokens);
+
+    // 后续支持历史研究继续研究
+    @Update("""
+            UPDATE research_session
+            SET status = 'QUEUE', update_time = NOW()
+            WHERE id = #{id} AND user_id = #{userId}
+              AND status IN ('NEW', 'NEED_CLARIFICATION')
+            """)
+    int casUpdateToQueue(@Param("id") String id, @Param("userId") Integer userId);
 }

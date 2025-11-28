@@ -13,9 +13,9 @@ import dev.chanler.researcher.infra.sse.SseHub;
 import dev.chanler.researcher.infra.util.EventPublisher;
 import dev.chanler.researcher.infra.util.SequenceUtil;
 
+import dev.chanler.researcher.infra.async.QueuedAsync;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,8 +37,7 @@ public class AgentPipeline {
 
     // TODO: 应当是传入 DeepResearchState，在 Service 层查询对应 id 的 State，没有就创建
     // TODO：后续应当支持接着发送消息，而非只能启动一次研究
-    // TODO：实现自定义线程池运行，实现排队限流
-    @Async
+    @QueuedAsync
     public void run(PipelineIn pipelineIn) {
         // 使用统一的 DeepResearchState 维护整个研究流程的状态
         DeepResearchState state = DeepResearchState.builder()

@@ -1,6 +1,5 @@
 package dev.chanler.researcher.interfaces.service.impl;
 
-import cn.hutool.core.lang.UUID;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import dev.chanler.researcher.application.data.PipelineIn;
@@ -18,6 +17,7 @@ import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchMessageRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchStatusRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.SendMessageRespDTO;
+import dev.chanler.researcher.infra.util.CacheUtil;
 import dev.chanler.researcher.interfaces.service.ResearchService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,13 +31,13 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
-// TODO: 拦截异常
 public class ResearchServiceImpl implements ResearchService {
 
     private final ResearchSessionMapper researchSessionMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final WorkflowEventMapper workflowEventMapper;
     private final AgentPipeline agentPipeline;
+    private final CacheUtil cacheUtil;
 
     @Override
     public CreateResearchRespDTO createResearch(Integer userId, Integer num) {
@@ -121,28 +121,26 @@ public class ResearchServiceImpl implements ResearchService {
 
     @Override
     public SendMessageRespDTO sendMessage(Integer userId, String researchId, SendMessageReqDTO sendMessageReqDTO) {
-        // TODO：权限验证，该 Research 属于该用户，升级到缓存，在获取状态时 add 缓存
-        LambdaQueryWrapper<ResearchSession> checkQueryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
-                .eq(ResearchSession::getUserId, userId)
-                .eq(ResearchSession::getId, researchId);
-        ResearchSession researchSession = researchSessionMapper.selectOne(checkQueryWrapper);
-        if (researchSession == null) {
-            throw new ResearchException("研究任务不存在");
+        // CAS 更新状态，幂等处理
+        int affected = researchSessionMapper.casUpdateToQueue(researchId, userId);
+        if (affected == 0) {
+            throw new ResearchException("启动研究异常");
         }
 
-        // TODO：后续应当支持历史研究继续研究，即构建 langchain4j 的 ChatMessage 进 DeepResearchState 调用 AgentPipeline
-        if (!researchSession.getStatus().equals(WorkflowStatus.NEW)) {
-            throw new ResearchException("研究任务状态异常，无法启动");
-        }
+        // 保存用户消息
+        cacheUtil.saveMessage(researchId, "user", sendMessageReqDTO.getContent());
+
+        // 异步启动研究流程
         PipelineIn pipelineIn = PipelineIn.builder()
                 .researchId(researchId)
                 .userId(userId)
                 .content(sendMessageReqDTO.getContent())
                 .build();
         agentPipeline.run(pipelineIn);
+
         return SendMessageRespDTO.builder()
-                .id(researchSession.getId())
-                .content("排队中")
+                .id(researchId)
+                .content("已接受任务")
                 .build();
     }
 }
