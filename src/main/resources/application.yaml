@@ -2,6 +2,11 @@ spring:
   application:
     name: deep-research
 
+research:
+  async:
+    max-pool-size: 10
+    queue-capacity: 50
+    task-timeout-minutes: 3
 
 ai:
   config:
