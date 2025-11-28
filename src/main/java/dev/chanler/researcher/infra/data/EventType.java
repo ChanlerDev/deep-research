@@ -5,6 +5,7 @@ package dev.chanler.researcher.infra.data;
  * @author: Chanler
  */
 public class EventType {
+    public static final String QUEUE = "QUEUE";           // 排队中
     public static final String SCOPE = "SCOPE";           // 范围分析阶段
     public static final String SUPERVISOR = "SUPERVISOR"; // 研究规划阶段
     public static final String RESEARCH = "RESEARCH";     // 深入研究阶段

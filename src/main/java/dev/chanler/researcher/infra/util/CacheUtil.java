@@ -84,6 +84,27 @@ public class CacheUtil {
         return item;
     }
 
+    /**
+     * 保存临时事件排队信息，用于前端显示排队状态，seq = -1
+     */
+    public TimelineItem saveTempEvent(String researchId, String type, String title) {
+        WorkflowEvent event = WorkflowEvent.builder()
+                .researchId(researchId)
+                .type(type)
+                .title(title)
+                .sequenceNo(-1)
+                .createTime(LocalDateTime.now())
+                .build();
+        TimelineItem item = TimelineItem.builder()
+                .kind(KIND_EVENT)
+                .researchId(researchId)
+                .sequenceNo(-1)
+                .event(event)
+                .build();
+        writeToRedis(researchId, List.of(item));
+        return item;
+    }
+
     public List<TimelineItem> getTimeline(String researchId, int lastSeq) {
         List<TimelineItem> redisItems = readFromRedis(researchId, lastSeq + 1, Integer.MAX_VALUE);
         if (!redisItems.isEmpty()) {

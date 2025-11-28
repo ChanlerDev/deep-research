@@ -46,4 +46,12 @@ public class EventPublisher {
     public void publishReportStream(String researchId, String partialText) {
         sseHub.sendReportStream(researchId, partialText);
     }
+
+    /**
+     * 发布临时事件（缓存 + SSE，不持久化）
+     */
+    public void publishTempEvent(String researchId, String type, String title) {
+        TimelineItem item = cacheUtil.saveTempEvent(researchId, type, title);
+        sseHub.sendTimelineItem(researchId, item);
+    }
 }
