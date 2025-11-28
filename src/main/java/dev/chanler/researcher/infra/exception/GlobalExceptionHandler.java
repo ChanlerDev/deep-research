@@ -1,0 +1,28 @@
+package dev.chanler.researcher.infra.exception;
+
+import dev.chanler.researcher.infra.common.Result;
+import dev.chanler.researcher.infra.common.Results;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+/**
+ * 全局异常处理器
+ * @author Chanler
+ */
+@RestControllerAdvice
+@Slf4j
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ResearchException.class)
+    public Result<Void> handleResearchException(ResearchException e) {
+        log.warn("ResearchException: {}", e.getMessage());
+        return Results.failure(e);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public Result<Void> handleException(Exception e) {
+        log.error("Unexpected exception", e);
+        return Results.failure("执行异常");
+    }
+}
