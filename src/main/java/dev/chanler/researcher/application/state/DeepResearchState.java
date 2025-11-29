@@ -5,6 +5,7 @@ import java.util.Map;
 
 import dev.chanler.researcher.application.schema.ScopeSchema;
 import dev.chanler.researcher.infra.client.TavilyClient;
+import dev.langchain4j.data.message.ChatMessage;
 import lombok.Builder;
 import lombok.Data;
 
@@ -18,7 +19,7 @@ public class DeepResearchState {
 
     // === 基础信息 ===
     private String researchId;
-    private String originalInput;
+    private List<ChatMessage> chatHistory;  // 包含历史消息 + 本次消息
     private String status;
 
     // === Scope 阶段产物 ===

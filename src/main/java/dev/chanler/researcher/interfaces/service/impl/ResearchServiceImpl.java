@@ -2,9 +2,11 @@ package dev.chanler.researcher.interfaces.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import dev.chanler.researcher.application.data.PipelineIn;
 import dev.chanler.researcher.application.data.WorkflowStatus;
+import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.application.workflow.AgentPipeline;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.UserMessage;
 import dev.chanler.researcher.domain.entity.ChatMessage;
 import dev.chanler.researcher.domain.entity.ResearchSession;
 import dev.chanler.researcher.domain.entity.WorkflowEvent;
@@ -23,6 +25,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -130,13 +134,36 @@ public class ResearchServiceImpl implements ResearchService {
         // 保存用户消息
         cacheUtil.saveMessage(researchId, "user", sendMessageReqDTO.getContent());
 
-        // 异步启动研究流程
-        PipelineIn pipelineIn = PipelineIn.builder()
+        // 查询历史消息并转换为 langchain4j ChatMessage
+        LambdaQueryWrapper<ChatMessage> historyQuery = Wrappers.lambdaQuery(ChatMessage.class)
+                .eq(ChatMessage::getResearchId, researchId)
+                .orderByAsc(ChatMessage::getSequenceNo);
+        List<ChatMessage> dbMessages = chatMessageMapper.selectList(historyQuery);
+        
+        List<dev.langchain4j.data.message.ChatMessage> chatHistory =  new ArrayList<>();
+        for (ChatMessage msg : dbMessages) {
+            if ("user".equals(msg.getRole())) {
+                chatHistory.add(UserMessage.from(msg.getContent()));
+            } else if ("assistant".equals(msg.getRole())) {
+                chatHistory.add(AiMessage.from(msg.getContent()));
+            }
+        }
+
+        // 构建 state 并启动研究流程
+        DeepResearchState state = DeepResearchState.builder()
                 .researchId(researchId)
-                .userId(userId)
-                .content(sendMessageReqDTO.getContent())
+                .chatHistory(chatHistory)
+                .status(WorkflowStatus.QUEUE)
+                .supervisorIterations(0)
+                .researcherIterations(0)
+                .supervisorNotes(new ArrayList<>())
+                .researcherNotes(new ArrayList<>())
+                .searchResults(new HashMap<>())
+                .searchNotes(new ArrayList<>())
+                .totalInputTokens(0L)
+                .totalOutputTokens(0L)
                 .build();
-        agentPipeline.run(pipelineIn);
+        agentPipeline.run(state);
 
         return SendMessageRespDTO.builder()
                 .id(researchId)

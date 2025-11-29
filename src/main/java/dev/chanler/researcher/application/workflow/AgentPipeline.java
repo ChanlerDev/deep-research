@@ -4,7 +4,6 @@ import dev.chanler.researcher.application.agent.ScopeAgent;
 import dev.chanler.researcher.application.agent.SupervisorAgent;
 import dev.chanler.researcher.application.agent.ReportAgent;
 import dev.chanler.researcher.infra.data.EventType;
-import dev.chanler.researcher.application.data.PipelineIn;
 import dev.chanler.researcher.application.data.WorkflowStatus;
 import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.domain.mapper.ResearchSessionMapper;
@@ -17,8 +16,6 @@ import dev.chanler.researcher.infra.async.QueuedAsync;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import java.util.ArrayList;
-import java.util.HashMap;
 
 /**
  * @author: Chanler
@@ -35,49 +32,33 @@ public class AgentPipeline {
     private final ResearchSessionMapper researchSessionMapper;
     private final EventPublisher eventPublisher;
 
-    // TODO: 应当是传入 DeepResearchState，在 Service 层查询对应 id 的 State，没有就创建
-    // TODO：后续应当支持接着发送消息，而非只能启动一次研究
     @QueuedAsync
-    public void run(PipelineIn pipelineIn) {
-        // 使用统一的 DeepResearchState 维护整个研究流程的状态
-        DeepResearchState state = DeepResearchState.builder()
-                .researchId(pipelineIn.getResearchId())
-                .originalInput(pipelineIn.getContent())
-                .status(WorkflowStatus.QUEUE)
-                .supervisorIterations(0)
-                .researcherIterations(0)
-                .supervisorNotes(new ArrayList<>())
-                .researcherNotes(new ArrayList<>())
-                .searchResults(new HashMap<>())
-                .searchNotes(new ArrayList<>())
-                .totalInputTokens(0L)
-                .totalOutputTokens(0L)
-                .build();
-
+    public void run(DeepResearchState state) {
+        String researchId = state.getResearchId();
         try {
             state.setStatus(WorkflowStatus.START);
-            updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.START, state);
+            updateResearchSession(researchId, WorkflowStatus.START, state);
 
             // Phase 1: Scope - 确定研究范围和问题
             scopeAgent.run(state);
 
             String status = state.getStatus();
             if (WorkflowStatus.FAILED.equals(status)) {
-                log.warn("Scope phase failed for researchId={}, status={} ", pipelineIn.getResearchId(), status);
-                eventPublisher.publishEvent(pipelineIn.getResearchId(), EventType.ERROR, "范围分析失败", null);
-                updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.FAILED, state);
+                log.warn("Scope phase failed for researchId={}, status={} ", researchId, status);
+                eventPublisher.publishEvent(researchId, EventType.ERROR, "范围分析失败", null);
+                updateResearchSession(researchId, WorkflowStatus.FAILED, state);
                 return;
             }
             if (WorkflowStatus.NEED_CLARIFICATION.equals(status)) {
-                log.info("Scope phase requires clarification for researchId={}", pipelineIn.getResearchId());
-                updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.NEED_CLARIFICATION, state);
+                log.info("Scope phase requires clarification for researchId={}", researchId);
+                updateResearchSession(researchId, WorkflowStatus.NEED_CLARIFICATION, state);
                 return;
             }
             if (!WorkflowStatus.IN_SCOPE.equals(status)) {
-                log.warn("Unexpected status after Scope phase for researchId={}, status={}", pipelineIn.getResearchId(), status);
+                log.warn("Unexpected status after Scope phase for researchId={}, status={}", researchId, status);
                 state.setStatus(WorkflowStatus.FAILED);
-                eventPublisher.publishEvent(pipelineIn.getResearchId(), EventType.ERROR, "范围分析状态异常", "status=" + status);
-                updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.FAILED, state);
+                eventPublisher.publishEvent(researchId, EventType.ERROR, "范围分析状态异常", "status=" + status);
+                updateResearchSession(researchId, WorkflowStatus.FAILED, state);
                 return;
             }
 
@@ -86,16 +67,16 @@ public class AgentPipeline {
 
             status = state.getStatus();
             if (WorkflowStatus.FAILED.equals(status)) {
-                log.warn("Supervisor phase failed for researchId={}, status={}", pipelineIn.getResearchId(), status);
-                eventPublisher.publishEvent(pipelineIn.getResearchId(), EventType.ERROR, "研究规划失败", null);
-                updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.FAILED, state);
+                log.warn("Supervisor phase failed for researchId={}, status={}", researchId, status);
+                eventPublisher.publishEvent(researchId, EventType.ERROR, "研究规划失败", null);
+                updateResearchSession(researchId, WorkflowStatus.FAILED, state);
                 return;
             }
             if (!WorkflowStatus.IN_RESEARCH.equals(status)) {
-                log.warn("Unexpected status after Supervisor phase for researchId={}, status={}", pipelineIn.getResearchId(), status);
+                log.warn("Unexpected status after Supervisor phase for researchId={}, status={}", researchId, status);
                 state.setStatus(WorkflowStatus.FAILED);
-                eventPublisher.publishEvent(pipelineIn.getResearchId(), EventType.ERROR, "研究规划状态异常", "status=" + status);
-                updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.FAILED, state);
+                eventPublisher.publishEvent(researchId, EventType.ERROR, "研究规划状态异常", "status=" + status);
+                updateResearchSession(researchId, WorkflowStatus.FAILED, state);
                 return;
             }
 
@@ -104,37 +85,37 @@ public class AgentPipeline {
 
             status = state.getStatus();
             if (WorkflowStatus.FAILED.equals(status)) {
-                log.warn("Report phase failed for researchId={}, status={}", pipelineIn.getResearchId(), status);
-                eventPublisher.publishEvent(pipelineIn.getResearchId(), EventType.ERROR, "报告生成失败", null);
-                updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.FAILED, state);
+                log.warn("Report phase failed for researchId={}, status={}", researchId, status);
+                eventPublisher.publishEvent(researchId, EventType.ERROR, "报告生成失败", null);
+                updateResearchSession(researchId, WorkflowStatus.FAILED, state);
                 return;
             }
             if (!WorkflowStatus.IN_REPORT.equals(status)) {
-                log.warn("Unexpected status after Report phase for researchId={}, status={}", pipelineIn.getResearchId(), status);
+                log.warn("Unexpected status after Report phase for researchId={}, status={}", researchId, status);
                 state.setStatus(WorkflowStatus.FAILED);
-                eventPublisher.publishEvent(pipelineIn.getResearchId(), EventType.ERROR, "报告生成状态异常", "status=" + status);
-                updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.FAILED, state);
+                eventPublisher.publishEvent(researchId, EventType.ERROR, "报告生成状态异常", "status=" + status);
+                updateResearchSession(researchId, WorkflowStatus.FAILED, state);
                 return;
             }
 
             state.setStatus(WorkflowStatus.COMPLETED);
-            updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.COMPLETED, state);
-            log.info("Final report generated for researchId={}", pipelineIn.getResearchId());
+            updateResearchSession(researchId, WorkflowStatus.COMPLETED, state);
+            log.info("Final report generated for researchId={}", researchId);
         } catch (WorkflowException e) {
             state.setStatus(WorkflowStatus.FAILED);
-            eventPublisher.publishEvent(pipelineIn.getResearchId(), EventType.ERROR,
+            eventPublisher.publishEvent(researchId, EventType.ERROR,
                     "研究过程中发生错误", e.getMessage());
-            updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.FAILED, state);
-            log.error("Workflow failed for researchId={}", pipelineIn.getResearchId(), e);
+            updateResearchSession(researchId, WorkflowStatus.FAILED, state);
+            log.error("Workflow failed for researchId={}", researchId, e);
         } catch (Exception e) {
             state.setStatus(WorkflowStatus.FAILED);
-            eventPublisher.publishEvent(pipelineIn.getResearchId(), EventType.ERROR,
+            eventPublisher.publishEvent(researchId, EventType.ERROR,
                     "系统错误", e.getMessage());
-            updateResearchSession(pipelineIn.getResearchId(), WorkflowStatus.FAILED, state);
-            log.error("Unexpected error for researchId={}", pipelineIn.getResearchId(), e);
+            updateResearchSession(researchId, WorkflowStatus.FAILED, state);
+            log.error("Unexpected error for researchId={}", researchId, e);
         } finally {
-            sequenceUtil.reset(pipelineIn.getResearchId());
-            sseHub.complete(pipelineIn.getResearchId(), state.getStatus());
+            sequenceUtil.reset(researchId);
+            sseHub.complete(researchId, state.getStatus());
         }
     }
 

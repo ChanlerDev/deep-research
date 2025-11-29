@@ -1,6 +1,6 @@
 package dev.chanler.researcher.infra.async;
 
-import dev.chanler.researcher.application.data.PipelineIn;
+import dev.chanler.researcher.application.state.DeepResearchState;
 import dev.chanler.researcher.infra.exception.ResearchException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,11 +24,11 @@ public class QueuedAsyncAspect {
     @Around("@annotation(QueuedAsync)")
     public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
         Object[] args = joinPoint.getArgs();
-        if (args.length == 0 || !(args[0] instanceof PipelineIn pipelineIn)) {
-            throw new ResearchException("@QueuedAsync 方法的第一个参数必须是 PipelineIn");
+        if (args.length == 0 || !(args[0] instanceof DeepResearchState state)) {
+            throw new ResearchException("@QueuedAsync 方法的第一个参数必须是 DeepResearchState");
         }
 
-        String researchId = pipelineIn.getResearchId();
+        String researchId = state.getResearchId();
         researchTaskExecutor.submit(researchId, () -> {
             try {
                 joinPoint.proceed();

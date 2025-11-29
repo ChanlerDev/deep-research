@@ -1,5 +1,6 @@
 package dev.chanler.researcher.application.agent;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +12,7 @@ import dev.chanler.researcher.application.data.WorkflowStatus;
 import dev.chanler.researcher.infra.util.EventPublisher;
 import dev.chanler.researcher.infra.util.MemoryUtil;
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -40,14 +42,16 @@ public class ScopeAgent {
 
     public void run(DeepResearchState state) {
         state.setStatus(WorkflowStatus.IN_SCOPE);
-        Long scopeEventId = eventPublisher.publishEvent(state.getResearchId(), 
-                EventType.SCOPE, "正在分析您的研究需求...", state.getOriginalInput());
+        UserMessage userInput = (UserMessage) CollUtil.getLast(state.getChatHistory());
+        Long scopeEventId = eventPublisher.publishEvent(state.getResearchId(),
+                EventType.SCOPE, "正在分析您的研究需求...", userInput.singleText());
         state.setCurrentScopeEventId(scopeEventId);
         AgentAbility agent = AgentAbility.builder()
                 .memory(MessageWindowChatMemory.withMaxMessages(100))
                 .chatModel(modelHandler.getModel(state.getResearchId()))
                 .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
                 .build();
+        agent.getMemory().add(state.getChatHistory());
         clarifyUserInstructions(agent, state);
         if (state.getClarifyWithUserSchema().needClarification()) {
             return;
@@ -56,7 +60,6 @@ public class ScopeAgent {
     }
 
     private void clarifyUserInstructions(AgentAbility agent, DeepResearchState state) {
-        agent.getMemory().add(UserMessage.from(state.getOriginalInput()));
         String messages = MemoryUtil.toBufferString(agent.getMemory());
         UserMessage userMessage = UserMessage.from(
                 StrUtil.format(CLARIFY_WITH_USER_INSTRUCTIONS, messages, DateUtil.today()));
