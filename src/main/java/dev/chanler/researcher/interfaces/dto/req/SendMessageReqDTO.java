@@ -8,4 +8,8 @@ import lombok.Getter;
 @Getter
 public class SendMessageReqDTO {
     private String content;
+    private String modelName;  // 模型名称
+    private String model;      // 模型
+    private String baseUrl;    // 用户自定义
+    private String apiKey;     // 用户自定义
 }

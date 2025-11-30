@@ -10,6 +10,8 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.chanler.researcher.domain.entity.ChatMessage;
 import dev.chanler.researcher.domain.entity.ResearchSession;
 import dev.chanler.researcher.domain.entity.WorkflowEvent;
+import dev.chanler.researcher.infra.config.ModelProp;
+import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.domain.mapper.ChatMessageMapper;
 import dev.chanler.researcher.domain.mapper.ResearchSessionMapper;
 import dev.chanler.researcher.domain.mapper.WorkflowEventMapper;
@@ -18,7 +20,9 @@ import dev.chanler.researcher.interfaces.dto.req.SendMessageReqDTO;
 import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchMessageRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchStatusRespDTO;
+import dev.chanler.researcher.interfaces.dto.resp.FreeModelRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.SendMessageRespDTO;
+import dev.chanler.researcher.application.model.ModelFactory;
 import dev.chanler.researcher.infra.util.CacheUtil;
 import dev.chanler.researcher.interfaces.service.ResearchService;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +46,8 @@ public class ResearchServiceImpl implements ResearchService {
     private final WorkflowEventMapper workflowEventMapper;
     private final AgentPipeline agentPipeline;
     private final CacheUtil cacheUtil;
+    private final ModelHandler modelHandler;
+    private final ModelFactory modelFactory;
 
     @Override
     public CreateResearchRespDTO createResearch(Integer userId, Integer num) {
@@ -85,10 +91,9 @@ public class ResearchServiceImpl implements ResearchService {
         List<ResearchSession> sessions = researchSessionMapper.selectList(queryWrapper);
         
         return sessions.stream().map(session -> {
-            String title = getFirstMessageContent(session.getId());
             return ResearchStatusRespDTO.builder()
                 .id(session.getId())
-                .title(title)
+                .title(session.getTitle())
                 .status(session.getStatus())
                 .startTime(session.getStartTime())
                 .updateTime(session.getUpdateTime())
@@ -106,25 +111,15 @@ public class ResearchServiceImpl implements ResearchService {
         if (researchSession == null) {
             throw new ResearchException("研究任务不存在");
         }
-        String title = getFirstMessageContent(researchId);
         return ResearchStatusRespDTO.builder()
                 .id(researchSession.getId())
-                .title(title)
+                .title(researchSession.getTitle())
+                .model(researchSession.getModel())
                 .status(researchSession.getStatus())
                 .startTime(researchSession.getStartTime())
                 .updateTime(researchSession.getUpdateTime())
                 .completeTime(researchSession.getCompleteTime())
                 .build();
-    }
-
-    private String getFirstMessageContent(String researchId) {
-        LambdaQueryWrapper<ChatMessage> queryWrapper = Wrappers.lambdaQuery(ChatMessage.class)
-                .eq(ChatMessage::getResearchId, researchId)
-                .eq(ChatMessage::getRole, "user")
-                .orderByAsc(ChatMessage::getSequenceNo)
-                .last("LIMIT 1");
-        ChatMessage message = chatMessageMapper.selectOne(queryWrapper);
-        return message != null ? message.getContent() : "New Research";
     }
 
     @Override
@@ -162,6 +157,19 @@ public class ResearchServiceImpl implements ResearchService {
         if (affected == 0) {
             throw new ResearchException("启动研究异常");
         }
+
+        // 解析并注册模型
+        ModelProp modelProp = ModelProp.builder()
+                .name(sendMessageReqDTO.getModelName())
+                .model(sendMessageReqDTO.getModel())
+                .baseUrl(sendMessageReqDTO.getBaseUrl())
+                .apiKey(sendMessageReqDTO.getApiKey())
+                .build();
+        modelHandler.addModel(researchId, modelProp);
+        String title = sendMessageReqDTO.getContent().length() > 20
+                ? sendMessageReqDTO.getContent().substring(0, 20)
+                : sendMessageReqDTO.getContent();
+        researchSessionMapper.setModelAndTitleIfNull(researchId, sendMessageReqDTO.getModel(), title);
 
         // 保存用户消息
         cacheUtil.saveMessage(researchId, "user", sendMessageReqDTO.getContent());
@@ -201,5 +209,10 @@ public class ResearchServiceImpl implements ResearchService {
                 .id(researchId)
                 .content("已接受任务")
                 .build();
+    }
+
+    @Override
+    public List<FreeModelRespDTO> getFreeModelList() {
+        return modelFactory.getFreeModelList();
     }
 }

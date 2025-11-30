@@ -8,6 +8,7 @@ import dev.chanler.researcher.interfaces.dto.req.SendMessageReqDTO;
 import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchMessageRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchStatusRespDTO;
+import dev.chanler.researcher.interfaces.dto.resp.FreeModelRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.SendMessageRespDTO;
 import dev.chanler.researcher.interfaces.service.ResearchService;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +58,11 @@ public class ResearchController {
             @RequestHeader("X-User-Id") Integer userId, @PathVariable String researchId,
             @RequestBody SendMessageReqDTO sendMessageReqDTO) {
         return Results.success(researchService.sendMessage(userId, researchId, sendMessageReqDTO));
+    }
+
+    @GetMapping("/models/free")
+    public Result<List<FreeModelRespDTO>> getFreeModelList() {
+        return Results.success(researchService.getFreeModelList());
     }
 
     @GetMapping("/sse")

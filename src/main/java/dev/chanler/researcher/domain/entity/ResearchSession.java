@@ -23,6 +23,8 @@ public class ResearchSession {
     private String id;
     private Integer userId;
     private String status;
+    private String title;
+    private String model;
     private LocalDateTime createTime;
     private LocalDateTime startTime;
     private LocalDateTime updateTime;

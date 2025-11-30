@@ -3,11 +3,9 @@ package dev.chanler.researcher.application.model;
 import dev.chanler.researcher.infra.config.ModelProp;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
-import lombok.Data;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ConcurrentHashMap;
-
 
 /**
  * @author: Chanler
@@ -15,13 +13,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class ModelHandler {
     private final ModelFactory modelFactory;
-    private final ConcurrentHashMap<String, ChatModel> modelPool;
-    private final ConcurrentHashMap<String, StreamingChatModel> streamingModelPool;
+    private final ConcurrentHashMap<String, ChatModel> modelPool = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, StreamingChatModel> streamingModelPool = new ConcurrentHashMap<>();
 
     public ModelHandler(ModelFactory modelFactory) {
         this.modelFactory = modelFactory;
-        this.modelPool = new ConcurrentHashMap<>();
-        this.streamingModelPool = new ConcurrentHashMap<>();
     }
 
     public ChatModel getModel(String researchId) {

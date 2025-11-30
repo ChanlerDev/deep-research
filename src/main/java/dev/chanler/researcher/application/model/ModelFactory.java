@@ -9,7 +9,10 @@ import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import lombok.Data;
 import org.springframework.stereotype.Component;
 
+import dev.chanler.researcher.interfaces.dto.resp.FreeModelRespDTO;
+
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -24,6 +27,7 @@ public class ModelFactory {
 
     private final Map<String, ChatModel> ChatModelCache;
     private final Map<String, StreamingChatModel> StreamingChatModelCache;
+    private final List<FreeModelRespDTO> freeModelList;
 
     public ModelFactory(DefaultModelProps defaultModelProps) {
         this.defaultModelProps = defaultModelProps;
@@ -37,6 +41,13 @@ public class ModelFactory {
             ChatModelCache.put(modelProp.getName(), buildChatModel(modelProp));
             StreamingChatModelCache.put(modelProp.getName(), buildStreamingChatModel(modelProp));
         }
+
+        this.freeModelList = defaultModelProps.getConfig().stream()
+                .map(prop -> FreeModelRespDTO.builder()
+                        .modelName(prop.getName())
+                        .model(prop.getModel())
+                        .build())
+                .collect(Collectors.toUnmodifiableList());
     }
 
     public ChatModel createChatModel(ModelProp modelProp) {
@@ -58,10 +69,11 @@ public class ModelFactory {
     }
     
     /**
-     * 判断是否是默认模型
+     * 判断是否是默认模型（apiKey 为空且 modelName 一样表示用默认配置）
      */
     private boolean isDefaultModel(ModelProp modelProp) {
-        return modelPropsMap.containsKey(modelProp.getName()) && 
+        return modelProp.getApiKey() == null &&
+               modelPropsMap.containsKey(modelProp.getName()) && 
                modelPropsMap.get(modelProp.getName()).equals(modelProp);
     }
     
@@ -87,4 +99,10 @@ public class ModelFactory {
                 .build();
     }
 
+    /**
+     * 获取免费模型列表（预构建，直接返回缓存）
+     */
+    public List<FreeModelRespDTO> getFreeModelList() {
+        return freeModelList;
+    }
 }

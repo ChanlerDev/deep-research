@@ -1,4 +1,4 @@
-package dev.chanler.researcher.infra.config;
+package dev.chanler.researcher.interfaces.dto.resp;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -8,15 +8,11 @@ import lombok.NoArgsConstructor;
 /**
  * @author: Chanler
  */
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ModelProp {
-    // 根据 name 检查缓冲池
-    private String name;
+public class FreeModelRespDTO {
+    private String modelName;
     private String model;
-    private String baseUrl;
-    private String apiKey;
 }
