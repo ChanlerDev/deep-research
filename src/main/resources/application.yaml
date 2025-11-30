@@ -1,3 +1,6 @@
+server:
+  port: 8080
+
 spring:
   application:
     name: deep-research
@@ -9,6 +12,13 @@ spring:
   sql:
     init:
       mode: never
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password:
+      database: 0
+      timeout: 3000ms
 
 research:
   async:
