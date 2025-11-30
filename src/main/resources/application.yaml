@@ -1,6 +1,14 @@
 spring:
   application:
     name: deep-research
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/db_deep_research?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: your_username
+    password: your_password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: never
 
 research:
   async:
@@ -11,10 +19,10 @@ research:
 ai:
   config:
     - name: deepseek
-      model: deepseek-v3
-      baseUrl: https://api.deepseek.com
-      apiKey: xxx
+      model: deepseek-chat
+      baseUrl: https://api.deepseek.com/v1
+      apiKey: your_deepseek_api_key
     - name: gpt
       model: gpt-5-mini
       baseUrl: https://api.openai.com
-      apiKey: xxx
+      apiKey: your_openai_api_key

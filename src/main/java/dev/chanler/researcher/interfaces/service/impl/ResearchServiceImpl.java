@@ -78,6 +78,26 @@ public class ResearchServiceImpl implements ResearchService {
     }
 
     @Override
+    public List<ResearchStatusRespDTO> getResearchList(Integer userId) {
+        LambdaQueryWrapper<ResearchSession> queryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
+                .eq(ResearchSession::getUserId, userId)
+                .orderByDesc(ResearchSession::getUpdateTime);
+        List<ResearchSession> sessions = researchSessionMapper.selectList(queryWrapper);
+        
+        return sessions.stream().map(session -> {
+            String title = getFirstMessageContent(session.getId());
+            return ResearchStatusRespDTO.builder()
+                .id(session.getId())
+                .title(title)
+                .status(session.getStatus())
+                .startTime(session.getStartTime())
+                .updateTime(session.getUpdateTime())
+                .completeTime(session.getCompleteTime())
+                .build();
+        }).collect(Collectors.toList());
+    }
+
+    @Override
     public ResearchStatusRespDTO getResearchStatus(Integer userId, String researchId) {
         LambdaQueryWrapper<ResearchSession> queryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
                 .eq(ResearchSession::getId, researchId)
@@ -86,13 +106,25 @@ public class ResearchServiceImpl implements ResearchService {
         if (researchSession == null) {
             throw new ResearchException("研究任务不存在");
         }
+        String title = getFirstMessageContent(researchId);
         return ResearchStatusRespDTO.builder()
                 .id(researchSession.getId())
+                .title(title)
                 .status(researchSession.getStatus())
                 .startTime(researchSession.getStartTime())
                 .updateTime(researchSession.getUpdateTime())
                 .completeTime(researchSession.getCompleteTime())
                 .build();
+    }
+
+    private String getFirstMessageContent(String researchId) {
+        LambdaQueryWrapper<ChatMessage> queryWrapper = Wrappers.lambdaQuery(ChatMessage.class)
+                .eq(ChatMessage::getResearchId, researchId)
+                .eq(ChatMessage::getRole, "user")
+                .orderByAsc(ChatMessage::getSequenceNo)
+                .last("LIMIT 1");
+        ChatMessage message = chatMessageMapper.selectOne(queryWrapper);
+        return message != null ? message.getContent() : "New Research";
     }
 
     @Override

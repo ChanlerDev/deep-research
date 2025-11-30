@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 @Builder
 public class ResearchStatusRespDTO {
     private String id;
+    private String title;
     private String status;
     private LocalDateTime startTime;
     private LocalDateTime updateTime;

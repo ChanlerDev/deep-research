@@ -34,6 +34,12 @@ public class ResearchController {
         return Results.success(researchService.createResearch(userId,num));
     }
 
+    @GetMapping("/list")
+    public Result<List<ResearchStatusRespDTO>> getResearchList(
+            @RequestHeader("X-User-Id") Integer userId) {
+        return Results.success(researchService.getResearchList(userId));
+    }
+
     @GetMapping("/research/{researchId}")
     public Result<ResearchStatusRespDTO> getResearchStatus(
             @RequestHeader("X-User-Id") Integer userId, @PathVariable String researchId) {

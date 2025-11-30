@@ -16,6 +16,7 @@ public interface ResearchService {
 
     CreateResearchRespDTO createResearch(Integer userId, Integer num);
 
+    List<ResearchStatusRespDTO> getResearchList(Integer userId);
 
     ResearchStatusRespDTO getResearchStatus(Integer userId, String researchId);
 
