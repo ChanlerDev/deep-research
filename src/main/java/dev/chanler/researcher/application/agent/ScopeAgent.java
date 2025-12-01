@@ -26,6 +26,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 import static dev.chanler.researcher.application.prompt.ScopePrompts.CLARIFY_WITH_USER_INSTRUCTIONS;
 import static dev.chanler.researcher.application.prompt.ScopePrompts.TRANSFORM_MESSAGES_INTO_RESEARCH_TOPIC_PROMPT;
 
@@ -63,7 +65,11 @@ public class ScopeAgent {
     private void clarifyUserInstructions(AgentAbility agent, DeepResearchState state) {
         String messages = MemoryUtil.toBufferString(agent.getMemory());
         UserMessage userMessage = UserMessage.from(
-                StrUtil.format(CLARIFY_WITH_USER_INSTRUCTIONS, messages, DateUtil.today()));
+            StrUtil.format(CLARIFY_WITH_USER_INSTRUCTIONS, Map.of(
+                "messages", messages,
+                "date", DateUtil.today()
+            ))
+        );
         JsonSchema jsonSchema = JsonSchemas.jsonSchemaFrom(ScopeSchema.ClarifyWithUserSchema.class)
                 .orElseThrow(() -> new IllegalStateException("Failed to generate JSON schema for ClarifyWithUserSchema"));
         ResponseFormat responseFormat = ResponseFormat.builder()
@@ -104,7 +110,10 @@ public class ScopeAgent {
     private void writeResearchBrief(AgentAbility agent, DeepResearchState state) {
         String messages = MemoryUtil.toBufferString(agent.getMemory());
         UserMessage userMessage = UserMessage.from(
-                StrUtil.format(TRANSFORM_MESSAGES_INTO_RESEARCH_TOPIC_PROMPT, messages, DateUtil.today()));
+                StrUtil.format(TRANSFORM_MESSAGES_INTO_RESEARCH_TOPIC_PROMPT, Map.of(
+                    "messages", messages,
+                    "date", DateUtil.today()
+                )));
         JsonSchema jsonSchema = JsonSchemas.jsonSchemaFrom(ScopeSchema.ResearchQuestion.class)
                 .orElseThrow(() -> new IllegalStateException("Failed to generate JSON schema for ResearchQuestion"));
         ResponseFormat responseFormat = ResponseFormat.builder()

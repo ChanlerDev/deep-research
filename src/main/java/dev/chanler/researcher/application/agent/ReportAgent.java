@@ -17,6 +17,8 @@ import dev.langchain4j.model.output.TokenUsage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Map;
+
 import static dev.chanler.researcher.application.prompt.ReportPrompts.REPORT_AGENT_PROMPT;
 
 /**
@@ -40,11 +42,11 @@ public class ReportAgent {
                 .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
                 .build();
         UserMessage userMessage = UserMessage.from(
-            StrUtil.format(REPORT_AGENT_PROMPT,
-                state.getResearchBrief(),
-                DateUtil.today(),
-                StrUtil.join("\n", state.getSupervisorNotes())
-        ));
+            StrUtil.format(REPORT_AGENT_PROMPT, Map.of(
+                "research_brief", state.getResearchBrief(),
+                "date", DateUtil.today(),
+                "findings", StrUtil.join("\n", state.getSupervisorNotes())
+            )));
         agent.getMemory().add(userMessage);
         action(agent, state);
         return state.getReport();

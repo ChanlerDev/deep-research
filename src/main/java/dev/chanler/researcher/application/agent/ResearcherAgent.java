@@ -27,6 +27,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static dev.chanler.researcher.application.prompt.ResearcherPrompts.*;
@@ -61,7 +62,7 @@ public class ResearcherAgent {
                 .build();
         
         SystemMessage systemMessage = SystemMessage.from(
-            StrUtil.format(RESEARCH_AGENT_PROMPT, DateUtil.today())
+            StrUtil.format(RESEARCH_AGENT_PROMPT,Map.of("date", DateUtil.today()))
         );
         agent.getMemory().add(systemMessage);
         agent.getMemory().add(UserMessage.from(state.getResearchTopic()));
@@ -145,13 +146,14 @@ public class ResearcherAgent {
     }
 
     private String compressResearch(AgentAbility agent, DeepResearchState state) {
-        String systemPrompt = StrUtil.format(COMPRESS_RESEARCH_SYSTEM_PROMPT, DateUtil.today());
+        String systemPrompt = StrUtil.format(COMPRESS_RESEARCH_SYSTEM_PROMPT, Map.of("date", DateUtil.today()));
         
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(systemPrompt));
         // 跳过前两条（ResearcherAgent 的 system + user），只保留工具调用历史
         messages.addAll(agent.getMemory().messages().stream().skip(2).collect(Collectors.toList()));
-        messages.add(UserMessage.from(StrUtil.format(COMPRESS_RESEARCH_HUMAN_MESSAGE, state.getResearchTopic())));
+        messages.add(UserMessage.from(
+            StrUtil.format(COMPRESS_RESEARCH_HUMAN_MESSAGE, Map.of("research_topic", state.getResearchTopic()))));
         
         ChatRequest compressRequest = ChatRequest.builder()
                 .messages(messages)

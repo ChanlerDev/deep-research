@@ -118,7 +118,10 @@ public class SearchAgent {
     
     private SummarySchema summarizeWebpage(AgentAbility agent, DeepResearchState state, String webpageContent) {
         try {
-            String prompt = StrUtil.format(SUMMARIZE_WEBPAGE_PROMPT, webpageContent, DateUtil.today());
+            String prompt = StrUtil.format(SUMMARIZE_WEBPAGE_PROMPT, Map.of(
+                "webpage_content", webpageContent,
+                "date", DateUtil.today()
+            ));
             
             JsonSchema jsonSchema = JsonSchemas.jsonSchemaFrom(SummarySchema.class)
                 .orElseThrow(() -> new IllegalStateException("Failed to generate JSON schema"));
