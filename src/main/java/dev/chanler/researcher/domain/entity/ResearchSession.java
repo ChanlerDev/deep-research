@@ -25,6 +25,7 @@ public class ResearchSession {
     private String status;
     private String title;
     private String model;
+    private String budget;
     private LocalDateTime createTime;
     private LocalDateTime startTime;
     private LocalDateTime updateTime;

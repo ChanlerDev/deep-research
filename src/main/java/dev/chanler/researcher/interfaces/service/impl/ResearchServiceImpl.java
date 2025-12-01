@@ -23,6 +23,7 @@ import dev.chanler.researcher.interfaces.dto.resp.ResearchStatusRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.FreeModelRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.SendMessageRespDTO;
 import dev.chanler.researcher.application.model.ModelFactory;
+import dev.chanler.researcher.infra.config.BudgetProps;
 import dev.chanler.researcher.infra.util.CacheUtil;
 import dev.chanler.researcher.interfaces.service.ResearchService;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +49,7 @@ public class ResearchServiceImpl implements ResearchService {
     private final CacheUtil cacheUtil;
     private final ModelHandler modelHandler;
     private final ModelFactory modelFactory;
+    private final BudgetProps budgetConfig;
 
     @Override
     public CreateResearchRespDTO createResearch(Integer userId, Integer num) {
@@ -169,7 +171,13 @@ public class ResearchServiceImpl implements ResearchService {
         String title = sendMessageReqDTO.getContent().length() > 20
                 ? sendMessageReqDTO.getContent().substring(0, 20)
                 : sendMessageReqDTO.getContent();
-        researchSessionMapper.setModelAndTitleIfNull(researchId, sendMessageReqDTO.getModel(), title);
+        String budget = sendMessageReqDTO.getBudget();
+        if (budget == null || budget.isEmpty()) {
+            budget = "HIGH";
+        }
+        researchSessionMapper.setInfoIfNull(researchId, sendMessageReqDTO.getModel(), budget, title);
+        
+        BudgetProps.BudgetLevel budgetLevel = budgetConfig.getLevel(budget);
 
         // 保存用户消息
         cacheUtil.saveMessage(researchId, "user", sendMessageReqDTO.getContent());
@@ -194,12 +202,20 @@ public class ResearchServiceImpl implements ResearchService {
                 .researchId(researchId)
                 .chatHistory(chatHistory)
                 .status(WorkflowStatus.QUEUE)
+                // Budget 配置
+                .budget(budgetLevel)
+                // Supervisor 阶段
                 .supervisorIterations(0)
-                .researcherIterations(0)
+                .conductCount(0)
                 .supervisorNotes(new ArrayList<>())
+                // Researcher 阶段
+                .researcherIterations(0)
+                .searchCount(0)
                 .researcherNotes(new ArrayList<>())
+                // Search 阶段
                 .searchResults(new HashMap<>())
                 .searchNotes(new ArrayList<>())
+                // Token 统计
                 .totalInputTokens(0L)
                 .totalOutputTokens(0L)
                 .build();

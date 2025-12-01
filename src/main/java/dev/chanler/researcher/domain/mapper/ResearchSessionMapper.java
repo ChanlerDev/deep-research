@@ -41,11 +41,12 @@ public interface ResearchSessionMapper extends BaseMapper<ResearchSession> {
             """)
     int casUpdateToQueue(@Param("id") String id, @Param("userId") Integer userId);
 
-    // 首次发言时记录模型和标题
+    // 首次发言时记录模型、预算和标题
     @Update("""
             UPDATE research_session
-            SET model = #{model}, title = #{title}, update_time = NOW()
+            SET model = #{model}, budget = #{budget}, title = #{title}, update_time = NOW()
             WHERE id = #{id} AND model IS NULL
             """)
-    int setModelAndTitleIfNull(@Param("id") String id, @Param("model") String model, @Param("title") String title);
+    int setInfoIfNull(@Param("id") String id, @Param("model") String model, 
+                                 @Param("budget") String budget, @Param("title") String title);
 }

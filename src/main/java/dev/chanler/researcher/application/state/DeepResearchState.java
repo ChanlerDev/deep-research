@@ -5,6 +5,7 @@ import java.util.Map;
 
 import dev.chanler.researcher.application.schema.ScopeSchema;
 import dev.chanler.researcher.infra.client.TavilyClient;
+import dev.chanler.researcher.infra.config.BudgetProps;
 import dev.langchain4j.data.message.ChatMessage;
 import lombok.Builder;
 import lombok.Data;
@@ -27,13 +28,18 @@ public class DeepResearchState {
     private ScopeSchema.ResearchQuestion researchQuestion;
     private String researchBrief;
 
+    // === Budget 配置 ===
+    private BudgetProps.BudgetLevel budget;  // 持有配置对象
+    
     // === Supervisor 阶段 ===
-    private Integer supervisorIterations;
+    private Integer supervisorIterations; // 当前迭代次数
+    private Integer conductCount;         // 当前 conductResearch 调用次数
     private List<String> supervisorNotes;
 
     // === Researcher 阶段 ===
     private String researchTopic;
-    private Integer researcherIterations;
+    private Integer researcherIterations; // 当前迭代次数
+    private Integer searchCount;          // 当前 tavilySearch 调用次数
     private List<String> researcherNotes;
     private String compressedResearch;
 

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS research_session (
     update_time     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     complete_time   DATETIME        DEFAULT NULL COMMENT '完成时间',
     model           VARCHAR(256)    DEFAULT NULL COMMENT '使用的模型名称',
+    budget          VARCHAR(16)     DEFAULT NULL COMMENT '研究预算级别: MEDIUM/HIGH/ULTRA',
     title           VARCHAR(256)    DEFAULT NULL COMMENT '研究标题',
     total_input_tokens  BIGINT UNSIGNED DEFAULT 0 COMMENT '累计输入Token数',
     total_output_tokens BIGINT UNSIGNED DEFAULT 0 COMMENT '累计输出Token数',

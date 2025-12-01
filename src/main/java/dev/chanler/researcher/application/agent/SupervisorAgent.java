@@ -42,8 +42,6 @@ public class SupervisorAgent {
     private final ToolRegistry toolRegistry;
     private final ResearcherAgent researcherAgent;
     private final EventPublisher eventPublisher;
-    private Integer max_concurrent_research_units = 3;
-    private Integer max_researcher_iterations = 6;
 
     private static final String SUPERVISOR_STAGE = SupervisorTool.class.getSimpleName();
 
@@ -58,14 +56,20 @@ public class SupervisorAgent {
                 .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
                 .build();
         SystemMessage systemMessage = SystemMessage.from(
-                StrUtil.format(LEAD_RESEARCHER_PROMPT,DateUtil.today(), max_concurrent_research_units, max_researcher_iterations));
+                StrUtil.format(LEAD_RESEARCHER_PROMPT, DateUtil.today(), 
+                        state.getBudget().getMaxConcurrentUnits(), state.getBudget().getMaxConductCount()));
         agent.getMemory().add(systemMessage);
         agent.getMemory().add(UserMessage.from(state.getResearchBrief()));
         plan(agent, state);
     }
 
     private void plan(AgentAbility agent, DeepResearchState state) {
-        while (state.getSupervisorIterations() < max_researcher_iterations) {
+        // 核心限制: conductCount < maxConductCount
+        // 安全阀: supervisorIterations < maxConductCount * 2
+        int maxConductCount = state.getBudget().getMaxConductCount();
+        int maxIterations = maxConductCount * 2;
+        while (state.getConductCount() < maxConductCount 
+                && state.getSupervisorIterations() < maxIterations) {
             // 1. 获取决策
             List<ToolSpecification> toolSpecifications = toolRegistry.getToolSpecifications(SUPERVISOR_STAGE);
             ChatRequest chatRequest = ChatRequest.builder()
@@ -102,6 +106,16 @@ public class SupervisorAgent {
             String result;
             
             if ("conductResearch".equals(toolExecutionRequest.name())) {
+                // 检查 conductResearch 调用次数限制
+                int maxConductCount = state.getBudget().getMaxConductCount();
+                if (state.getConductCount() >= maxConductCount) {
+                    log.warn("conductResearch count limit reached: {}/{}", 
+                            state.getConductCount(), maxConductCount);
+                    result = "已达到研究任务配额限制，请调用 researchComplete 完成研究";
+                    agent.getMemory().add(ToolExecutionResultMessage.from(toolExecutionRequest, result));
+                    continue;
+                }
+                
                 String researchTopic = null;
                 try {
                     var argsNode = objectMapper.readTree(toolExecutionRequest.arguments());
@@ -118,9 +132,13 @@ public class SupervisorAgent {
                 // 设置 researcher 相关字段
                 state.setResearchTopic(researchTopic);
                 state.setResearcherIterations(0);
+                state.setSearchCount(0);  // 重置搜索计数
                 state.setResearcherNotes(new ArrayList<>());
                 
                 result = researcherAgent.run(state);
+                
+                // 增加 conductCount
+                state.setConductCount(state.getConductCount() + 1);
             } else {
                 var executor = toolRegistry.getExecutor(toolExecutionRequest.name());
                 if (executor == null) {

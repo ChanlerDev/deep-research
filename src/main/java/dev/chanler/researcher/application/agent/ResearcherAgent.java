@@ -45,7 +45,6 @@ public class ResearcherAgent {
     private final ObjectMapper objectMapper;
     private final SearchAgent searchAgent;
     private final EventPublisher eventPublisher;
-    private Integer max_researcher_iterations = 10;
 
     private static final String RESEARCHER_STAGE = ResearcherTool.class.getSimpleName();
 
@@ -72,8 +71,12 @@ public class ResearcherAgent {
     }
 
     private void plan(AgentAbility agent, DeepResearchState state) {
-        
-        while (state.getResearcherIterations() < max_researcher_iterations) {
+        // 核心限制: searchCount < maxSearchCount
+        // 安全阀: researcherIterations < maxSearchCount * 2
+        int maxSearchCount = state.getBudget().getMaxSearchCount();
+        int maxIterations = maxSearchCount * 2;
+        while (state.getSearchCount() < maxSearchCount 
+                && state.getResearcherIterations() < maxIterations) {
             // 1. 获取决策
             List<ToolSpecification> toolSpecifications = toolRegistry.getToolSpecifications(RESEARCHER_STAGE);
             ChatRequest chatRequest = ChatRequest.builder()
@@ -107,6 +110,16 @@ public class ResearcherAgent {
             String result;
             
             if ("tavilySearch".equals(toolExecutionRequest.name())) {
+                // 检查 tavilySearch 调用次数限制
+                int maxSearchCount = state.getBudget().getMaxSearchCount();
+                if (state.getSearchCount() >= maxSearchCount) {
+                    log.warn("tavilySearch count limit reached: {}/{}",
+                            state.getSearchCount(), maxSearchCount);
+                    result = "已达到搜索配额限制，请根据已有信息完成研究";
+                    agent.getMemory().add(ToolExecutionResultMessage.from(toolExecutionRequest, result));
+                    continue;
+                }
+                
                 try {
                     var argsNode = objectMapper.readTree(toolExecutionRequest.arguments());
                     String query = argsNode.get("query").asText();
@@ -121,6 +134,9 @@ public class ResearcherAgent {
                     state.setSearchNotes(new ArrayList<>());
 
                     result = searchAgent.run(state);
+                    
+                    // 增加 searchCount
+                    state.setSearchCount(state.getSearchCount() + 1);
                 } catch (Exception e) {
                     log.error("Failed to parse tavilySearch arguments", e);
                     throw new WorkflowException("Failed to parse tavilySearch arguments", e);

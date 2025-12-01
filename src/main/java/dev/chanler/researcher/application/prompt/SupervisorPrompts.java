@@ -37,7 +37,7 @@ public class SupervisorPrompts {
             **任务委派预算**（避免过度委派）：
             - **倾向使用单代理**——除非用户请求明显适合并行化，否则优先使用单个代理以保持简单。
             - **能够自信作答时立即停止**——不要为追求完美而不断委派。
-            - **限制工具调用次数**——若在 {max_researcher_iterations} 次 think_tool 和 ConductResearch 调用后仍未找到合适来源，应停止。
+            - **限制工具调用次数**——若在 {max_researcher_iterations} 次 ConductResearch 调用后仍未找到合适来源，应停止。
             </Hard Limits>
             
             <Show Your Thinking>
