@@ -17,6 +17,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ResponseFormat;
+import dev.langchain4j.model.chat.request.ResponseFormatType;
 import dev.langchain4j.model.chat.request.json.JsonSchema;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.TokenUsage;
@@ -66,13 +67,14 @@ public class ScopeAgent {
         JsonSchema jsonSchema = JsonSchemas.jsonSchemaFrom(ScopeSchema.ClarifyWithUserSchema.class)
                 .orElseThrow(() -> new IllegalStateException("Failed to generate JSON schema for ClarifyWithUserSchema"));
         ResponseFormat responseFormat = ResponseFormat.builder()
+                .type(ResponseFormatType.JSON)
                 .jsonSchema(jsonSchema)
                 .build();
         ChatRequest chatRequest = ChatRequest.builder()
                 .messages(userMessage)
                 .responseFormat(responseFormat)
                 .build();
-        ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
+        ChatResponse chatResponse = agent.getChatModel().chat(chatRequest);
         TokenUsage tokenUsage = chatResponse.tokenUsage();
         state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
         state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());
@@ -106,13 +108,14 @@ public class ScopeAgent {
         JsonSchema jsonSchema = JsonSchemas.jsonSchemaFrom(ScopeSchema.ResearchQuestion.class)
                 .orElseThrow(() -> new IllegalStateException("Failed to generate JSON schema for ResearchQuestion"));
         ResponseFormat responseFormat = ResponseFormat.builder()
+                .type(ResponseFormatType.JSON)
                 .jsonSchema(jsonSchema)
                 .build();
         ChatRequest chatRequest = ChatRequest.builder()
                 .messages(userMessage)
                 .responseFormat(responseFormat)
                 .build();
-        ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
+        ChatResponse chatResponse = agent.getChatModel().chat(chatRequest);
         TokenUsage tokenUsage = chatResponse.tokenUsage();
         state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
         state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());

@@ -72,7 +72,7 @@ public class SupervisorAgent {
                     .toolSpecifications(toolSpecifications)
                     .messages(agent.getMemory().messages())
                     .build();
-            ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
+            ChatResponse chatResponse = agent.getChatModel().chat(chatRequest);
             TokenUsage tokenUsage = chatResponse.tokenUsage();
             state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
             state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());

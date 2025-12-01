@@ -79,7 +79,7 @@ public class ResearcherAgent {
                     .messages(agent.getMemory().messages())
                     .toolSpecifications(toolSpecifications)
                     .build();
-            ChatResponse chatResponse = agent.getChatModel().doChat(chatRequest);
+            ChatResponse chatResponse = agent.getChatModel().chat(chatRequest);
             TokenUsage tokenUsage = chatResponse.tokenUsage();
             state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
             state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());
@@ -157,7 +157,7 @@ public class ResearcherAgent {
                 .messages(messages)
                 .build();
         
-        ChatResponse compressResponse = agent.getChatModel().doChat(compressRequest);
+        ChatResponse compressResponse = agent.getChatModel().chat(compressRequest);
         TokenUsage tokenUsage = compressResponse.tokenUsage();
         state.setTotalInputTokens(state.getTotalInputTokens() + tokenUsage.inputTokenCount());
         state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());

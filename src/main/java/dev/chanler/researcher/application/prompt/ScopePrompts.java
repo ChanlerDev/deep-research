@@ -28,17 +28,17 @@ public class ScopePrompts {
             - 不要询问不必要的信息，也不要重复询问用户已经提供的信息。只要用户已提供，就不要再问
             
             请使用以下确切键以有效 JSON 格式作答：
-            "need_clarification": boolean,
+            "needClarification": boolean,
             "question": "<向用户澄清报告范围的问题>",
             "verification": "<我们将开始研究的确认消息>"
             
             如果你需要提出澄清问题，请返回：
-            "need_clarification": true,
+            "needClarification": true,
             "question": "<你的澄清问题>",
             "verification": ""
             
             如果你不需要提出澄清问题，请返回：
-            "need_clarification": false,
+            "needClarification": false,
             "question": "",
             "verification": "<确认将根据已提供信息开始研究的致谢消息>"
             
