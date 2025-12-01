@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS research_session (
     start_time      DATETIME        DEFAULT NULL COMMENT '开始研究时间',
     update_time     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     complete_time   DATETIME        DEFAULT NULL COMMENT '完成时间',
+    model           VARCHAR(256)    DEFAULT NULL COMMENT '使用的模型名称',
+    title           VARCHAR(256)    DEFAULT NULL COMMENT '研究标题',
     total_input_tokens  BIGINT UNSIGNED DEFAULT 0 COMMENT '累计输入Token数',
     total_output_tokens BIGINT UNSIGNED DEFAULT 0 COMMENT '累计输出Token数',
     KEY idx_user_status (user_id, status),
