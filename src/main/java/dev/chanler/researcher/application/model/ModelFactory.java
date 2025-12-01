@@ -69,12 +69,12 @@ public class ModelFactory {
     }
     
     /**
-     * 判断是否是默认模型（apiKey 为空且 modelName 一样表示用默认配置）
+     * 判断是否是默认模型（apiKey 为空且 modelName 匹配表示用默认配置）
      */
     private boolean isDefaultModel(ModelProp modelProp) {
+        // 只根据 name 匹配提供模型，不比较完整对象
         return modelProp.getApiKey() == null &&
-               modelPropsMap.containsKey(modelProp.getName()) && 
-               modelPropsMap.get(modelProp.getName()).equals(modelProp);
+               modelPropsMap.containsKey(modelProp.getName());
     }
     
     /**
