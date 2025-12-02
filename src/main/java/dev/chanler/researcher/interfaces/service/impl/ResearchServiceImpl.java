@@ -121,6 +121,8 @@ public class ResearchServiceImpl implements ResearchService {
                 .startTime(researchSession.getStartTime())
                 .updateTime(researchSession.getUpdateTime())
                 .completeTime(researchSession.getCompleteTime())
+                .totalInputTokens(researchSession.getTotalInputTokens())
+                .totalOutputTokens(researchSession.getTotalOutputTokens())
                 .build();
     }
 
@@ -135,6 +137,7 @@ public class ResearchServiceImpl implements ResearchService {
             throw new ResearchException("研究任务不存在");
         }
 
+        // TODO: 缓存优化
         LambdaQueryWrapper<ChatMessage> chatMessageQueryWrapper = Wrappers.lambdaQuery(ChatMessage.class)
                 .eq(ChatMessage::getResearchId, researchId);
 
@@ -149,6 +152,8 @@ public class ResearchServiceImpl implements ResearchService {
                 .startTime(researchSession.getStartTime())
                 .updateTime(researchSession.getUpdateTime())
                 .completeTime(researchSession.getCompleteTime())
+                .totalInputTokens(researchSession.getTotalInputTokens())
+                .totalOutputTokens(researchSession.getTotalOutputTokens())
                 .build();
     }
 
