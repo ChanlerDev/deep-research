@@ -28,7 +28,9 @@ public class EventPublisher {
      * 发布事件 (工作流事件)
      */
     public Long publishEvent(String researchId, String type, String title, String content, Long parentEventId) {
-        TimelineItem item = cacheUtil.saveEvent(researchId, type, title, content, parentEventId);
+        // 截断 title 防止超过数据库字段长度 (VARCHAR 512)
+        String safeTitle = title != null && title.length() > 200 ? title.substring(0, 200) + "..." : title;
+        TimelineItem item = cacheUtil.saveEvent(researchId, type, safeTitle, content, parentEventId);
         sseHub.sendTimelineItem(researchId, item);
         return item.getEvent().getId();
     }

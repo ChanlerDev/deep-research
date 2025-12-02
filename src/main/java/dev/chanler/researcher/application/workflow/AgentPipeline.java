@@ -104,13 +104,13 @@ public class AgentPipeline {
         } catch (WorkflowException e) {
             state.setStatus(WorkflowStatus.FAILED);
             eventPublisher.publishEvent(researchId, EventType.ERROR,
-                    "研究过程中发生错误", e.getMessage());
+                    "研究过程中发生错误", null);
             updateResearchSession(researchId, WorkflowStatus.FAILED, state);
-            log.error("Workflow failed for researchId={}", researchId, e);
+            log.error("Workflow failed for researchId={}, error={}", researchId, e.getMessage(), e);
         } catch (Exception e) {
             state.setStatus(WorkflowStatus.FAILED);
             eventPublisher.publishEvent(researchId, EventType.ERROR,
-                    "系统错误", e.getMessage());
+                    "系统错误，请稍后重试", null);
             updateResearchSession(researchId, WorkflowStatus.FAILED, state);
             log.error("Unexpected error for researchId={}", researchId, e);
         } finally {
