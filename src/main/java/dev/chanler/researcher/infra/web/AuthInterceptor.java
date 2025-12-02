@@ -1,4 +1,4 @@
-package dev.chanler.researcher.infra.config;
+package dev.chanler.researcher.infra.web;
 
 import dev.chanler.researcher.infra.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;

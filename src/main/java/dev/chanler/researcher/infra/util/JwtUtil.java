@@ -28,7 +28,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .subject(String.valueOf(userId))
                 .issuedAt(now)
-                .expiration(DateUtil.offsetMillisecond(now, jwtProp.getExpiration().intValue()))
+                .expiration(DateUtil.offsetMinute(now, jwtProp.getExpiration().intValue()))
                 .signWith(key)
                 .compact();
     }
