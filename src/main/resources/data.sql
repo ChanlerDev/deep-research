@@ -1,8 +1,21 @@
+-- 用户表
+CREATE TABLE IF NOT EXISTS `user` (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT '用户ID',
+    username        VARCHAR(128)    DEFAULT NULL UNIQUE COMMENT '用户名',
+    password        VARCHAR(128)    DEFAULT NULL COMMENT '密码',
+    google_id       VARCHAR(64)     DEFAULT NULL UNIQUE COMMENT 'Google OpenID (sub)',
+    avatar_url      VARCHAR(512)    DEFAULT NULL COMMENT '头像URL (DiceBear)',
+    create_time     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    KEY idx_google_id (google_id),
+    KEY idx_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
+
 -- 研究会话表
 -- Primary Key: UUID (由 MyBatis-Plus ASSIGN_UUID 生成)
 CREATE TABLE IF NOT EXISTS research_session (
     id              CHAR(32)        NOT NULL PRIMARY KEY COMMENT '研究ID (UUID)',
-    user_id         INT             NOT NULL COMMENT '用户ID',
+    user_id         BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
     status          VARCHAR(32)     NOT NULL DEFAULT 'NEW' COMMENT '状态: NEW/QUEUE/START/IN_SCOPE/NEED_CLARIFICATION/IN_RESEARCH/IN_REPORT/COMPLETED/FAILED',
     create_time     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     start_time      DATETIME        DEFAULT NULL COMMENT '开始研究时间',
