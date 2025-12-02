@@ -6,7 +6,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.springframework.cglib.core.Local;
 
 import java.time.LocalDateTime;
 
@@ -21,7 +20,7 @@ public class ResearchSession {
 
     @TableId(value = "id", type = IdType.ASSIGN_UUID)
     private String id;
-    private Integer userId;
+    private Long userId;
     private String status;
     private String title;
     private String model;

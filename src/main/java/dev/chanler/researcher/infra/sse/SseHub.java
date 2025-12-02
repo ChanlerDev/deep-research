@@ -70,7 +70,7 @@ public class SseHub {
         toRemove.forEach(pair -> remove(pair[0], pair[1]));
     }
 
-    public SseEmitter connect(Integer userId, String researchId, String clientId, String lastEventId) {
+    public SseEmitter connect(Long userId, String researchId, String clientId, String lastEventId) {
         // TODO: 权限校验
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         emitter.onCompletion(() -> remove(researchId, clientId));
@@ -154,7 +154,7 @@ public class SseHub {
         }
     }
 
-    private void replayIfNeeded(Integer userId, String researchId, SseEmitter emitter, String lastEventId) {
+    private void replayIfNeeded(Long userId, String researchId, SseEmitter emitter, String lastEventId) {
         if (StrUtil.isEmptyIfStr(lastEventId)) {
             return;
         }

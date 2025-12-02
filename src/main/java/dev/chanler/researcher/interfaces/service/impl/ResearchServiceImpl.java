@@ -52,7 +52,7 @@ public class ResearchServiceImpl implements ResearchService {
     private final BudgetProps budgetConfig;
 
     @Override
-    public CreateResearchRespDTO createResearch(Integer userId, Integer num) {
+    public CreateResearchRespDTO createResearch(Long userId, Integer num) {
         LambdaQueryWrapper<ResearchSession> queryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
                 .eq(ResearchSession::getUserId, userId)
                 .eq(ResearchSession::getStatus, WorkflowStatus.NEW);
@@ -86,7 +86,7 @@ public class ResearchServiceImpl implements ResearchService {
     }
 
     @Override
-    public List<ResearchStatusRespDTO> getResearchList(Integer userId) {
+    public List<ResearchStatusRespDTO> getResearchList(Long userId) {
         LambdaQueryWrapper<ResearchSession> queryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
                 .eq(ResearchSession::getUserId, userId)
                 .orderByDesc(ResearchSession::getUpdateTime);
@@ -105,7 +105,7 @@ public class ResearchServiceImpl implements ResearchService {
     }
 
     @Override
-    public ResearchStatusRespDTO getResearchStatus(Integer userId, String researchId) {
+    public ResearchStatusRespDTO getResearchStatus(Long userId, String researchId) {
         LambdaQueryWrapper<ResearchSession> queryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
                 .eq(ResearchSession::getId, researchId)
                 .eq(ResearchSession::getUserId, userId);
@@ -125,7 +125,7 @@ public class ResearchServiceImpl implements ResearchService {
     }
 
     @Override
-    public ResearchMessageRespDTO getResearchMessages(Integer userId, String researchId) {
+    public ResearchMessageRespDTO getResearchMessages(Long userId, String researchId) {
         // TODO：权限验证，该 Research 属于该用户，升级到缓存，在获取状态时 add 缓存
         LambdaQueryWrapper<ResearchSession> checkQueryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
                 .eq(ResearchSession::getUserId, userId)
@@ -153,7 +153,7 @@ public class ResearchServiceImpl implements ResearchService {
     }
 
     @Override
-    public SendMessageRespDTO sendMessage(Integer userId, String researchId, SendMessageReqDTO sendMessageReqDTO) {
+    public SendMessageRespDTO sendMessage(Long userId, String researchId, SendMessageReqDTO sendMessageReqDTO) {
         // CAS 更新状态，幂等处理
         int affected = researchSessionMapper.casUpdateToQueue(researchId, userId);
         if (affected == 0) {

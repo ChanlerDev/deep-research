@@ -1,6 +1,5 @@
 package dev.chanler.researcher.interfaces.service;
 
-import dev.chanler.researcher.domain.entity.ChatMessage;
 import dev.chanler.researcher.interfaces.dto.req.SendMessageReqDTO;
 import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchMessageRespDTO;
@@ -15,15 +14,15 @@ import java.util.List;
  */
 public interface ResearchService {
 
-    CreateResearchRespDTO createResearch(Integer userId, Integer num);
+    CreateResearchRespDTO createResearch(Long userId, Integer num);
 
-    List<ResearchStatusRespDTO> getResearchList(Integer userId);
+    List<ResearchStatusRespDTO> getResearchList(Long userId);
 
-    ResearchStatusRespDTO getResearchStatus(Integer userId, String researchId);
+    ResearchStatusRespDTO getResearchStatus(Long userId, String researchId);
 
-    ResearchMessageRespDTO getResearchMessages(Integer userId, String researchId);
+    ResearchMessageRespDTO getResearchMessages(Long userId, String researchId);
 
-    SendMessageRespDTO sendMessage(Integer userId, String researchId, SendMessageReqDTO sendMessageReqDTO);
+    SendMessageRespDTO sendMessage(Long userId, String researchId, SendMessageReqDTO sendMessageReqDTO);
 
     List<FreeModelRespDTO> getFreeModelList();
 }

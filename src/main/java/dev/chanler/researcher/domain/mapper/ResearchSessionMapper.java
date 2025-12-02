@@ -39,7 +39,7 @@ public interface ResearchSessionMapper extends BaseMapper<ResearchSession> {
             WHERE id = #{id} AND user_id = #{userId}
               AND status IN ('NEW', 'NEED_CLARIFICATION')
             """)
-    int casUpdateToQueue(@Param("id") String id, @Param("userId") Integer userId);
+    int casUpdateToQueue(@Param("id") String id, @Param("userId") Long userId);
 
     // 首次发言时记录模型、预算和标题
     @Update("""

@@ -1,6 +1,5 @@
 package dev.chanler.researcher.interfaces.controller;
 
-import dev.chanler.researcher.domain.entity.ChatMessage;
 import dev.chanler.researcher.infra.common.Result;
 import dev.chanler.researcher.infra.common.Results;
 import dev.chanler.researcher.infra.sse.SseHub;
@@ -23,7 +22,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/research")
 @RequiredArgsConstructor
-// TODO: 使用 ThreadLocal 在拦截器中保存 userId
 public class ResearchController {
 
     private final ResearchService researchService;
@@ -31,31 +29,31 @@ public class ResearchController {
 
     @GetMapping("/create")
     public Result<CreateResearchRespDTO> createResearch(
-            @RequestHeader("X-User-Id") Integer userId, @RequestParam Integer num) {
-        return Results.success(researchService.createResearch(userId,num));
+            @RequestAttribute("userId") Long userId, @RequestParam Integer num) {
+        return Results.success(researchService.createResearch(userId, num));
     }
 
     @GetMapping("/list")
     public Result<List<ResearchStatusRespDTO>> getResearchList(
-            @RequestHeader("X-User-Id") Integer userId) {
+            @RequestAttribute("userId") Long userId) {
         return Results.success(researchService.getResearchList(userId));
     }
 
     @GetMapping("/research/{researchId}")
     public Result<ResearchStatusRespDTO> getResearchStatus(
-            @RequestHeader("X-User-Id") Integer userId, @PathVariable String researchId) {
+            @RequestAttribute("userId") Long userId, @PathVariable String researchId) {
         return Results.success(researchService.getResearchStatus(userId, researchId));
     }
 
     @GetMapping("/research/{researchId}/messages")
     public Result<ResearchMessageRespDTO> getResearchMessages(
-            @RequestHeader("X-User-Id") Integer userId, @PathVariable String researchId) {
+            @RequestAttribute("userId") Long userId, @PathVariable String researchId) {
         return Results.success(researchService.getResearchMessages(userId, researchId));
     }
 
     @PostMapping("/research/{researchId}/messages")
     public Result<SendMessageRespDTO> sendMessage(
-            @RequestHeader("X-User-Id") Integer userId, @PathVariable String researchId,
+            @RequestAttribute("userId") Long userId, @PathVariable String researchId,
             @RequestBody SendMessageReqDTO sendMessageReqDTO) {
         return Results.success(researchService.sendMessage(userId, researchId, sendMessageReqDTO));
     }
@@ -66,7 +64,7 @@ public class ResearchController {
     }
 
     @GetMapping("/sse")
-    public SseEmitter stream(@RequestHeader("X-User-Id") Integer userId,
+    public SseEmitter stream(@RequestAttribute("userId") Long userId,
              @RequestHeader("X-Research-Id") String researchId,
             @RequestHeader("X-Client-Id") String clientId, // 前端记得分配
             @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
