@@ -50,3 +50,11 @@ ai:
       model: gpt-5-mini
       baseUrl: https://api.openai.com
       apiKey: your_openai_api_key
+
+google:
+  client-id: your-client-id
+  client-secret: your-client-secret
+
+jwt:
+  secret: deep-research-jwt-secret-key-must-be-at-least-32-chars
+  expiration: 10080

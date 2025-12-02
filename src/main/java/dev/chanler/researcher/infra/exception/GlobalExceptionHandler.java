@@ -20,6 +20,12 @@ public class GlobalExceptionHandler {
         return Results.failure(e);
     }
 
+    @ExceptionHandler(UserException.class)
+    public Result<Void> handleUserException(UserException e) {
+        log.warn("UserException: {}", e.getMessage());
+        return Results.failure(e);
+    }
+
     @ExceptionHandler(Exception.class)
     public Result<Void> handleException(Exception e) {
         log.error("Unexpected exception", e);
