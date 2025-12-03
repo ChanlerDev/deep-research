@@ -26,6 +26,12 @@ public class GlobalExceptionHandler {
         return Results.failure(e);
     }
 
+    @ExceptionHandler(ModelException.class)
+    public Result<Void> handleModelException(ModelException e) {
+        log.warn("ModelException: {}", e.getMessage());
+        return Results.failure(e);
+    }
+
     @ExceptionHandler(Exception.class)
     public Result<Void> handleException(Exception e) {
         log.error("Unexpected exception", e);
