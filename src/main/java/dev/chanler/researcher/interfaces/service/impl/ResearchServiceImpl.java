@@ -10,22 +10,24 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.chanler.researcher.domain.entity.ChatMessage;
 import dev.chanler.researcher.domain.entity.ResearchSession;
 import dev.chanler.researcher.domain.entity.WorkflowEvent;
+import dev.chanler.researcher.domain.entity.Model;
 import dev.chanler.researcher.infra.config.ModelProp;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.domain.mapper.ChatMessageMapper;
 import dev.chanler.researcher.domain.mapper.ResearchSessionMapper;
 import dev.chanler.researcher.domain.mapper.WorkflowEventMapper;
+import dev.chanler.researcher.domain.mapper.ModelMapper;
 import dev.chanler.researcher.infra.exception.ResearchException;
 import dev.chanler.researcher.interfaces.dto.req.SendMessageReqDTO;
 import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchMessageRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchStatusRespDTO;
-import dev.chanler.researcher.interfaces.dto.resp.FreeModelRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.SendMessageRespDTO;
 import dev.chanler.researcher.application.model.ModelFactory;
 import dev.chanler.researcher.infra.config.BudgetProps;
 import dev.chanler.researcher.infra.util.CacheUtil;
 import dev.chanler.researcher.interfaces.service.ResearchService;
+import dev.chanler.researcher.interfaces.service.ModelService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -45,11 +47,13 @@ public class ResearchServiceImpl implements ResearchService {
     private final ResearchSessionMapper researchSessionMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final WorkflowEventMapper workflowEventMapper;
+    private final ModelMapper modelMapper;
     private final AgentPipeline agentPipeline;
     private final CacheUtil cacheUtil;
     private final ModelHandler modelHandler;
     private final ModelFactory modelFactory;
     private final BudgetProps budgetConfig;
+    private final ModelService modelService;
 
     @Override
     public CreateResearchRespDTO createResearch(Long userId, Integer num) {
@@ -116,7 +120,7 @@ public class ResearchServiceImpl implements ResearchService {
         return ResearchStatusRespDTO.builder()
                 .id(researchSession.getId())
                 .title(researchSession.getTitle())
-                .model(researchSession.getModel())
+                .model(researchSession.getModelId())
                 .status(researchSession.getStatus())
                 .startTime(researchSession.getStartTime())
                 .updateTime(researchSession.getUpdateTime())
@@ -164,23 +168,44 @@ public class ResearchServiceImpl implements ResearchService {
         if (affected == 0) {
             throw new ResearchException("启动研究异常");
         }
-
-        // 解析并注册模型
-        ModelProp modelProp = ModelProp.builder()
-                .name(sendMessageReqDTO.getModelName())
-                .model(sendMessageReqDTO.getModel())
-                .baseUrl(sendMessageReqDTO.getBaseUrl())
-                .apiKey(sendMessageReqDTO.getApiKey())
-                .build();
-        modelHandler.addModel(researchId, modelProp);
-        String title = sendMessageReqDTO.getContent().length() > 20
+        
+        ResearchSession session = researchSessionMapper.selectById(researchId);
+        if (session == null) {
+            throw new ResearchException("研究不存在");
+        }
+        if (!userId.equals(session.getUserId())) {
+            throw new ResearchException("无权访问此研究");
+        }
+        
+        String modelId = sendMessageReqDTO.getModelId();
+        String budget = session.getBudget();
+        
+        // 新会话
+        if (session.getModelId() == null) {
+            if (modelId == null || modelId.isBlank()) {
+                throw new ResearchException("模型为空，请选择");
+            }
+            
+            String title = sendMessageReqDTO.getContent().length() > 20
                 ? sendMessageReqDTO.getContent().substring(0, 20)
                 : sendMessageReqDTO.getContent();
-        String budget = sendMessageReqDTO.getBudget();
-        if (budget == null || budget.isEmpty()) {
-            budget = "HIGH";
+            budget = sendMessageReqDTO.getBudget();
+            if (budget == null || budget.isBlank()) {
+                budget = "HIGH";
+            }
+            researchSessionMapper.setInfoIfNull(researchId, modelId, budget, title);
         }
-        researchSessionMapper.setInfoIfNull(researchId, sendMessageReqDTO.getModel(), budget, title);
+
+        Model model = modelService.getModelById(userId, modelId);
+        ModelProp modelProp = ModelProp.builder()
+            .name(model.getName())
+            .model(model.getModel())
+            .baseUrl(model.getBaseUrl())
+            .apiKey(model.getApiKey())
+            .build();
+        
+        // 注册模型
+        modelHandler.addModel(researchId, modelProp);
         
         BudgetProps.BudgetLevel budgetLevel = budgetConfig.getLevel(budget);
 
@@ -230,10 +255,5 @@ public class ResearchServiceImpl implements ResearchService {
                 .id(researchId)
                 .content("已接受任务")
                 .build();
-    }
-
-    @Override
-    public List<FreeModelRespDTO> getFreeModelList() {
-        return modelFactory.getFreeModelList();
     }
 }

@@ -43,10 +43,22 @@ public interface ResearchSessionMapper extends BaseMapper<ResearchSession> {
 
     // 首次发言时记录模型、预算和标题
     @Update("""
+            <script>
             UPDATE research_session
-            SET model = #{model}, budget = #{budget}, title = #{title}, update_time = NOW()
-            WHERE id = #{id} AND model IS NULL
+            SET update_time = NOW()
+            <if test="modelId != null">, model_id = #{modelId}</if>
+            <if test="budget != null">, budget = #{budget}</if>
+            <if test="title != null">, title = #{title}</if>
+            WHERE id = #{id} AND model_id IS NULL
+            </script>
             """)
-    int setInfoIfNull(@Param("id") String id, @Param("model") String model, 
+    int setInfoIfNull(@Param("id") String id, @Param("modelId") String modelId, 
                                  @Param("budget") String budget, @Param("title") String title);
+
+    @Select("""
+            SELECT COUNT(*) FROM research_session 
+            WHERE model_id = #{modelId} 
+            AND status NOT IN ('COMPLETED', 'FAILED')
+            """)
+    int countActiveUsage(@Param("modelId") String modelId);
 }

@@ -4,7 +4,6 @@ import dev.chanler.researcher.interfaces.dto.req.SendMessageReqDTO;
 import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchMessageRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchStatusRespDTO;
-import dev.chanler.researcher.interfaces.dto.resp.FreeModelRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.SendMessageRespDTO;
 
 import java.util.List;
@@ -23,6 +22,4 @@ public interface ResearchService {
     ResearchMessageRespDTO getResearchMessages(Long userId, String researchId);
 
     SendMessageRespDTO sendMessage(Long userId, String researchId, SendMessageReqDTO sendMessageReqDTO);
-
-    List<FreeModelRespDTO> getFreeModelList();
 }

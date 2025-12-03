@@ -16,19 +16,16 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ResearchSession {
-
+public class Model {
+    
     @TableId(value = "id", type = IdType.ASSIGN_UUID)
     private String id;
+    private String type;
     private Long userId;
-    private String status;
-    private String title;
-    private String modelId;
-    private String budget;
+    private String name;
+    private String model;
+    private String baseUrl;
+    private String apiKey;
     private LocalDateTime createTime;
-    private LocalDateTime startTime;
     private LocalDateTime updateTime;
-    private LocalDateTime completeTime;
-    private Long totalInputTokens;
-    private Long totalOutputTokens;
 }
