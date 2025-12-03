@@ -11,7 +11,6 @@ import dev.chanler.researcher.domain.entity.ChatMessage;
 import dev.chanler.researcher.domain.entity.ResearchSession;
 import dev.chanler.researcher.domain.entity.WorkflowEvent;
 import dev.chanler.researcher.domain.entity.Model;
-import dev.chanler.researcher.infra.config.ModelProp;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.domain.mapper.ChatMessageMapper;
 import dev.chanler.researcher.domain.mapper.ResearchSessionMapper;
@@ -23,7 +22,6 @@ import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchMessageRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchStatusRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.SendMessageRespDTO;
-import dev.chanler.researcher.application.model.ModelFactory;
 import dev.chanler.researcher.infra.config.BudgetProps;
 import dev.chanler.researcher.infra.util.CacheUtil;
 import dev.chanler.researcher.interfaces.service.ResearchService;
@@ -47,11 +45,9 @@ public class ResearchServiceImpl implements ResearchService {
     private final ResearchSessionMapper researchSessionMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final WorkflowEventMapper workflowEventMapper;
-    private final ModelMapper modelMapper;
     private final AgentPipeline agentPipeline;
     private final CacheUtil cacheUtil;
     private final ModelHandler modelHandler;
-    private final ModelFactory modelFactory;
     private final BudgetProps budgetConfig;
     private final ModelService modelService;
 
@@ -183,7 +179,7 @@ public class ResearchServiceImpl implements ResearchService {
         // 新会话
         if (session.getModelId() == null) {
             if (modelId == null || modelId.isBlank()) {
-                throw new ResearchException("模型为空，请选择");
+                throw new ResearchException("模型不应为空");
             }
             
             String title = sendMessageReqDTO.getContent().length() > 20
@@ -197,15 +193,9 @@ public class ResearchServiceImpl implements ResearchService {
         }
 
         Model model = modelService.getModelById(userId, modelId);
-        ModelProp modelProp = ModelProp.builder()
-            .name(model.getName())
-            .model(model.getModel())
-            .baseUrl(model.getBaseUrl())
-            .apiKey(model.getApiKey())
-            .build();
-        
+
         // 注册模型
-        modelHandler.addModel(researchId, modelProp);
+        modelHandler.addModel(researchId, model);
         
         BudgetProps.BudgetLevel budgetLevel = budgetConfig.getLevel(budget);
 

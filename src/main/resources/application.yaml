@@ -44,21 +44,6 @@ research:
         max-search-count: 4
         max-concurrent-units: 3
 
-ai:
-  config:
-    - name: x-ai/grok-4.1-fast:free
-      model: x-ai/grok-4.1-fast:free
-      baseUrl: https://openrouter.ai/api/v1
-      apiKey: ${OPENROUTER_API_KEY:}
-    - name: deepseek
-      model: deepseek-chat
-      baseUrl: https://api.deepseek.com/v1
-      apiKey: ${DEEPSEEK_API_KEY:}
-    - name: gpt
-      model: gpt-4o-mini
-      baseUrl: https://api.openai.com
-      apiKey: ${OPENAI_API_KEY:}
-
 google:
   client-id: ${GOOGLE_CLIENT_ID:}
   client-secret: ${GOOGLE_CLIENT_SECRET:}

@@ -1,10 +1,11 @@
 package dev.chanler.researcher.application.model;
 
-import dev.chanler.researcher.infra.config.ModelProp;
+import dev.chanler.researcher.domain.entity.Model;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -13,8 +14,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class ModelHandler {
     private final ModelFactory modelFactory;
-    private final ConcurrentHashMap<String, ChatModel> modelPool = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, StreamingChatModel> streamingModelPool = new ConcurrentHashMap<>();
+    private final Map<String, ChatModel> modelPool = new ConcurrentHashMap<>();
+    private final Map<String, StreamingChatModel> streamingModelPool = new ConcurrentHashMap<>();
 
     public ModelHandler(ModelFactory modelFactory) {
         this.modelFactory = modelFactory;
@@ -28,9 +29,9 @@ public class ModelHandler {
         return streamingModelPool.get(researchId);
     }
 
-    public void addModel(String researchId, ModelProp modelProp) {
-        ChatModel chatModel = modelFactory.createChatModel(modelProp);
-        StreamingChatModel streamingChatModel = modelFactory.createStreamingChatModel(modelProp);
+    public void addModel(String researchId, Model model) {
+        ChatModel chatModel = modelFactory.createChatModel(model);
+        StreamingChatModel streamingChatModel = modelFactory.createStreamingChatModel(model);
         modelPool.put(researchId, chatModel);
         streamingModelPool.put(researchId, streamingChatModel);
     }

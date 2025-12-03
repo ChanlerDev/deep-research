@@ -1,108 +1,76 @@
 package dev.chanler.researcher.application.model;
 
-import dev.chanler.researcher.infra.config.DefaultModelProps;
-import dev.chanler.researcher.infra.config.ModelProp;
+import dev.chanler.researcher.domain.entity.Model;
+import dev.chanler.researcher.infra.exception.ResearchException;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import dev.chanler.researcher.interfaces.dto.resp.FreeModelRespDTO;
-
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author: Chanler
  */
 @Component
 @Data
+@Slf4j
 public class ModelFactory {
-    private final DefaultModelProps defaultModelProps;
-    private final Map<String, ModelProp> modelPropsMap;
 
-    private final Map<String, ChatModel> ChatModelCache;
-    private final Map<String, StreamingChatModel> StreamingChatModelCache;
-    private final List<FreeModelRespDTO> freeModelList;
+    private static final String GLOBAL_MODEL_TYPE = "GLOBAL";
 
-    public ModelFactory(DefaultModelProps defaultModelProps) {
-        this.defaultModelProps = defaultModelProps;
-        this.modelPropsMap = defaultModelProps.getConfig().stream()
-                .collect(Collectors.toMap(ModelProp::getName, modelProp -> modelProp));
+    private final Map<String, ChatModel> chatModelCache = new ConcurrentHashMap<>();
+    private final Map<String, StreamingChatModel> streamingChatModelCache = new ConcurrentHashMap<>();
 
-        this.ChatModelCache = new HashMap<>();
-        this.StreamingChatModelCache = new HashMap<>();
-        
-        for (ModelProp modelProp : defaultModelProps.getConfig()) {
-            ChatModelCache.put(modelProp.getName(), buildChatModel(modelProp));
-            StreamingChatModelCache.put(modelProp.getName(), buildStreamingChatModel(modelProp));
+    public ChatModel createChatModel(Model model) {
+        if (model == null || model.getId() == null) {
+            throw new ResearchException("模型不应为空");
         }
-
-        this.freeModelList = defaultModelProps.getConfig().stream()
-                .map(prop -> FreeModelRespDTO.builder()
-                        .modelName(prop.getName())
-                        .model(prop.getModel())
-                        .build())
-                .collect(Collectors.toUnmodifiableList());
+        if (isGlobalModel(model)) {
+            return chatModelCache.computeIfAbsent(model.getId(), key -> {
+                log.info("初始化模型 {} ({})", model.getName(), model.getId());
+                return buildChatModel(model);
+            });
+        }
+        log.info("初始化自定义模型 {} ({})", model.getName(), model.getId());
+        return buildChatModel(model);
     }
 
-    public ChatModel createChatModel(ModelProp modelProp) {
-        // 检查是否是默认模型
-        if (isDefaultModel(modelProp)) {
-            return ChatModelCache.get(modelProp.getName());
+    public StreamingChatModel createStreamingChatModel(Model model) {
+        if (model == null || model.getId() == null) {
+            throw new ResearchException("模型不应为空");
         }
-        // 用户自定义模型，创建新实例
-        return buildChatModel(modelProp);
-    }
-
-    public StreamingChatModel createStreamingChatModel(ModelProp modelProp) {
-        // 检查是否是默认模型
-        if (isDefaultModel(modelProp)) {
-            return StreamingChatModelCache.get(modelProp.getName());
+        if (isGlobalModel(model)) {
+            return streamingChatModelCache.computeIfAbsent(model.getId(), key -> {
+                log.info("初始化流式模型 {} ({})", model.getName(), model.getId());
+                return buildStreamingChatModel(model);
+            });
         }
-        // 用户自定义模型，创建新实例
-        return buildStreamingChatModel(modelProp);
+        log.info("初始化自定义流式模型 {} ({})", model.getName(), model.getId());
+        return buildStreamingChatModel(model);
     }
     
-    /**
-     * 判断是否是默认模型（apiKey 为空且 modelName 匹配表示用默认配置）
-     */
-    private boolean isDefaultModel(ModelProp modelProp) {
-        // 只根据 name 匹配提供模型，不比较完整对象
-        return modelProp.getApiKey() == null &&
-               modelPropsMap.containsKey(modelProp.getName());
+    private boolean isGlobalModel(Model model) {
+        return model != null && GLOBAL_MODEL_TYPE.equalsIgnoreCase(model.getType());
     }
-    
-    /**
-     * 构建 ChatModel 实例
-     */
-    private ChatModel buildChatModel(ModelProp modelProp) {
+
+    private ChatModel buildChatModel(Model model) {
         return OpenAiChatModel.builder()
-                .baseUrl(modelProp.getBaseUrl())
-                .apiKey(modelProp.getApiKey())
-                .modelName(modelProp.getModel())
+                .baseUrl(model.getBaseUrl())
+                .apiKey(model.getApiKey())
+                .modelName(model.getModel())
                 .build();
     }
     
-    /**
-     * 构建 StreamingChatModel 实例
-     */
-    private StreamingChatModel buildStreamingChatModel(ModelProp modelProp) {
+    private StreamingChatModel buildStreamingChatModel(Model model) {
         return OpenAiStreamingChatModel.builder()
-                .baseUrl(modelProp.getBaseUrl())
-                .apiKey(modelProp.getApiKey())
-                .modelName(modelProp.getModel())
+                .baseUrl(model.getBaseUrl())
+                .apiKey(model.getApiKey())
+                .modelName(model.getModel())
                 .build();
-    }
-
-    /**
-     * 获取免费模型列表（预构建，直接返回缓存）
-     */
-    public List<FreeModelRespDTO> getFreeModelList() {
-        return freeModelList;
     }
 }

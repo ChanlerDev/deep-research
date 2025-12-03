@@ -3,6 +3,7 @@ package dev.chanler.researcher.application.workflow;
 import dev.chanler.researcher.application.agent.ScopeAgent;
 import dev.chanler.researcher.application.agent.SupervisorAgent;
 import dev.chanler.researcher.application.agent.ReportAgent;
+import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.infra.data.EventType;
 import dev.chanler.researcher.application.data.WorkflowStatus;
 import dev.chanler.researcher.application.state.DeepResearchState;
@@ -31,6 +32,7 @@ public class AgentPipeline {
     private final SseHub sseHub;
     private final ResearchSessionMapper researchSessionMapper;
     private final EventPublisher eventPublisher;
+    private final ModelHandler modelHandler;
 
     @QueuedAsync
     public void run(DeepResearchState state) {
@@ -116,6 +118,7 @@ public class AgentPipeline {
         } finally {
             sequenceUtil.reset(researchId);
             sseHub.complete(researchId, state.getStatus());
+            modelHandler.removeModel(researchId);
         }
     }
 
