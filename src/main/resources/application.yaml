@@ -47,6 +47,7 @@ research:
 google:
   client-id: ${GOOGLE_CLIENT_ID:}
   client-secret: ${GOOGLE_CLIENT_SECRET:}
+  redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/oauth2callback}
 
 jwt:
   secret: ${JWT_SECRET:deep-research-jwt-secret-key-must-be-at-least-32-chars}

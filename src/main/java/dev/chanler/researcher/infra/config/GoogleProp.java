@@ -14,4 +14,5 @@ import org.springframework.context.annotation.Configuration;
 public class GoogleProp {
     private String clientId;
     private String clientSecret;
+    private String redirectUri;
 }

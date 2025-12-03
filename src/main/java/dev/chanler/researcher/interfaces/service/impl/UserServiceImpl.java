@@ -1,5 +1,6 @@
 package dev.chanler.researcher.interfaces.service.impl;
 
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
@@ -10,6 +11,7 @@ import dev.chanler.researcher.domain.mapper.UserMapper;
 import dev.chanler.researcher.infra.config.GoogleProp;
 import dev.chanler.researcher.infra.exception.UserException;
 import dev.chanler.researcher.infra.util.JwtUtil;
+import dev.chanler.researcher.interfaces.dto.req.GoogleOneTapReqDTO;
 import dev.chanler.researcher.interfaces.dto.req.LoginReqDTO;
 import dev.chanler.researcher.interfaces.dto.req.RegisterReqDTO;
 import dev.chanler.researcher.interfaces.dto.resp.GoogleUserInfoRespDTO;
@@ -36,7 +38,7 @@ public class UserServiceImpl implements UserService {
 
     private static final String GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
     private static final String GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
-    private static final String GOOGLE_REDIRECT_URI = "https://research.chanler.dev/oauth2callback";
+    private static final String GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo";
     private static final String AVATAR_URL_TEMPLATE = "https://api.dicebear.com/9.x/pixel-art/svg?seed=%s";
 
     @Override
@@ -95,6 +97,15 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public LoginRespDTO handleGoogleOneTap(GoogleOneTapReqDTO req) {
+        GoogleUserInfoRespDTO info = verifyIdToken(req.getCredential());
+        User user = findOrCreateGoogleUser(info);
+        return LoginRespDTO.builder()
+                .token(jwtUtil.generate(user.getId()))
+                .build();
+    }
+
+    @Override
     public UserInfoRespDTO getUserInfo(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
@@ -110,7 +121,7 @@ public class UserServiceImpl implements UserService {
                 .form("code", code)
                 .form("client_id", googleProp.getClientId())
                 .form("client_secret", googleProp.getClientSecret())
-                .form("redirect_uri", GOOGLE_REDIRECT_URI)
+                .form("redirect_uri", googleProp.getRedirectUri())
                 .form("grant_type", "authorization_code")
                 .execute();
 
@@ -119,6 +130,33 @@ public class UserServiceImpl implements UserService {
             throw new UserException("Google 登录失败");
         }
         return JSONUtil.parseObj(resp.body()).getStr("access_token");
+    }
+
+    private GoogleUserInfoRespDTO verifyIdToken(String credential) {
+        if (StrUtil.isBlank(credential)) {
+            throw new UserException("Google 登录失败");
+        }
+        HttpResponse resp = HttpRequest.get(GOOGLE_TOKEN_INFO_URL)
+                .form("id_token", credential)
+                .execute();
+        if (!resp.isOk()) {
+            log.error("Google One Tap 校验失败: {}", resp.body());
+            throw new UserException("Google 登录失败");
+        }
+
+        GoogleUserInfoRespDTO info = JSONUtil.toBean(resp.body(), GoogleUserInfoRespDTO.class);
+        String aud = info.getAud();
+        if (StrUtil.isNotBlank(googleProp.getClientId()) && !StrUtil.equals(googleProp.getClientId(), aud)) {
+            log.error("Google One Tap aud 不匹配, expected={}, actual={}", googleProp.getClientId(), aud);
+            throw new UserException("Google 登录失败");
+        }
+
+        if (StrUtil.isBlank(info.getSub())) {
+            log.error("Google One Tap 响应缺少 sub: {}", resp.body());
+            throw new UserException("Google 登录失败");
+        }
+
+        return info;
     }
 
     private GoogleUserInfoRespDTO fetchUserInfo(String accessToken) {
