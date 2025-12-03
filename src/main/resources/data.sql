@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS research_session (
     start_time      DATETIME        DEFAULT NULL COMMENT '开始研究时间',
     update_time     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     complete_time   DATETIME        DEFAULT NULL COMMENT '完成时间',
-    model           VARCHAR(256)    DEFAULT NULL COMMENT '使用的模型名称',
+    model_id        VARCHAR(256)    DEFAULT NULL COMMENT '模型ID',
     budget          VARCHAR(16)     DEFAULT NULL COMMENT '研究预算级别: MEDIUM/HIGH/ULTRA',
     title           VARCHAR(256)    DEFAULT NULL COMMENT '研究标题',
     total_input_tokens  BIGINT UNSIGNED DEFAULT 0 COMMENT '累计输入Token数',
@@ -29,6 +29,20 @@ CREATE TABLE IF NOT EXISTS research_session (
     KEY idx_user_status (user_id, status),
     KEY idx_user_create (user_id, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='研究会话';
+
+-- 模型表
+CREATE TABLE IF NOT EXISTS model (
+    id          CHAR(32)        NOT NULL PRIMARY KEY COMMENT '模型ID',
+    type        VARCHAR(16)     NOT NULL COMMENT 'GLOBAL/USER',
+    user_id     BIGINT UNSIGNED DEFAULT NULL COMMENT '拥有者',
+    name        VARCHAR(128)    NOT NULL COMMENT '展示名称',
+    model       VARCHAR(128)    NOT NULL COMMENT '模型ID',
+    base_url    VARCHAR(256)    NOT NULL COMMENT '接口地址',
+    api_key     VARCHAR(256)    DEFAULT NULL COMMENT 'API Key',
+    create_time DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    KEY idx_type_user_create (type, user_id, create_time DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型配置';
 
 -- 聊天消息表
 -- 存储用户与助手的对话消息

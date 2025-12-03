@@ -20,6 +20,10 @@ spring:
       database: 0
       timeout: 3000ms
 
+tavily:
+  api-key: ${TAVILY_API_KEY:}
+  base-url: ${TAVILY_BASE_URL:https://api.tavily.com}
+
 research:
   async:
     max-pool-size: 10

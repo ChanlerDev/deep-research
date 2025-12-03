@@ -100,18 +100,31 @@ public class SearchAgent {
                 try {
                     SummarySchema summary = summarizeWebpage(agent, state, content);
                     String formatted = StrUtil.format(
-                        "[%s]\nURL: %s\n<summary>%s</summary>\n<key_excerpts>%s</key_excerpts>",
-                        result.title(), result.url(), summary.getSummary(), summary.getKeyExcerpts()
+                        "[{title}]\nURL: {url}\n<summary>{summary}</summary>\n<key_excerpts>{key_excerpts}</key_excerpts>",
+                        Map.of(
+                            "title", result.title(),
+                            "url", result.url(),
+                            "summary", summary.getSummary(),
+                            "key_excerpts", summary.getKeyExcerpts()
+                        )
                     );
                     state.getSearchNotes().add(formatted);
                 } catch (Exception e) {
                     log.warn("Failed to summarize {}", result.url());
-                    state.getSearchNotes().add(StrUtil.format("[%s]\nURL: %s\n%s",
-                        result.title(), result.url(), result.content()));
+                    state.getSearchNotes().add(StrUtil.format("[{title}]\nURL: {url}\n{content}",
+                        Map.of(
+                            "title", result.title(),
+                            "url", result.url(),
+                            "content", result.content()
+                        )));
                 }
             } else {
-                state.getSearchNotes().add(StrUtil.format("[%s]\nURL: %s\n%s",
-                    result.title(), result.url(), content));
+                state.getSearchNotes().add(StrUtil.format("[{title}]\nURL: {url}\n{content}",
+                    Map.of(
+                        "title", result.title(),
+                        "url", result.url(),
+                        "content", content
+                    )));
             }
         }
     }
@@ -159,11 +172,13 @@ public class SearchAgent {
                 "已分析并整理搜索结果", null, state.getCurrentSearchEventId());
         
         StringBuilder output = new StringBuilder();
-        output.append(StrUtil.format("Search results for query: '%s'\n\n", state.getQuery()));
+        output.append(StrUtil.format("Search results for query: '{query}'\n\n",
+                Map.of("query", state.getQuery())));
         
         int num = 1;
         for (String result : state.getSearchNotes()) {
-            output.append(StrUtil.format("\n--- SOURCE %d ---\n", num++));
+            output.append(StrUtil.format("\n--- SOURCE {index} ---\n",
+                    Map.of("index", num++)));
             output.append(result);
             output.append("\n").append("-".repeat(80)).append("\n");
         }
