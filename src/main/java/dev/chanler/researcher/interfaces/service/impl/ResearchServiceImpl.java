@@ -173,15 +173,15 @@ public class ResearchServiceImpl implements ResearchService {
             throw new ResearchException("无权访问此研究");
         }
         
-        String modelId = sendMessageReqDTO.getModelId();
+        String modelId = session.getModelId();
         String budget = session.getBudget();
-        
+
         // 新会话
-        if (session.getModelId() == null) {
-            if (modelId == null || modelId.isBlank()) {
+        if (modelId == null) {
+            if (sendMessageReqDTO.getModelId() == null || sendMessageReqDTO.getModelId().isBlank()) {
                 throw new ResearchException("模型不应为空");
             }
-            
+            modelId = sendMessageReqDTO.getModelId();
             String title = sendMessageReqDTO.getContent().length() > 20
                 ? sendMessageReqDTO.getContent().substring(0, 20)
                 : sendMessageReqDTO.getContent();

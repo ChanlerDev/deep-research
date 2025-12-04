@@ -27,6 +27,17 @@ public class ScopePrompts {
             - 如有助于清晰表达，可使用项目符号或编号列表。确保它们使用 Markdown 格式，若将字符串输出传递给 Markdown 渲染器能正确渲染
             - 不要询问不必要的信息，也不要重复询问用户已经提供的信息。只要用户已提供，就不要再问
             
+            你必须严格按照 JSON Schema 输出，不得包含 Markdown、注释或额外字段。
+            Schema:
+            {
+              "type": "object",
+              "required": ["needClarification", "question", "verification"],
+              "properties": {
+                "needClarification": { "type": "boolean" },
+                "question": { "type": "string" },
+                "verification": { "type": "string" }
+              }
+            }
             请使用以下确切键以有效 JSON 格式作答：
             "needClarification": boolean,
             "question": "<向用户澄清报告范围的问题>",
@@ -60,7 +71,17 @@ public class ScopePrompts {
             
             今天的日期是 {date}。
             
-            你将返回一个用于指导研究的单一研究问题。
+            你将返回一个用于指导研究的单一研究问题。响应必须是符合以下 JSON Schema 的 JSON 对象，不能携带 Markdown 或额外字段：
+            {
+              "type": "object",
+              "required": ["researchBrief"],
+              "properties": {
+                "researchBrief": {
+                  "type": "string",
+                  "description": "A research question that will be used to guide the research."
+                }
+              }
+            }
             
             指南：
             1. 最大化具体性与细节

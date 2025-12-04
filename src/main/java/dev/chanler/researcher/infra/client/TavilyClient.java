@@ -1,5 +1,6 @@
 package dev.chanler.researcher.infra.client;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.chanler.researcher.infra.config.TavilyProp;
@@ -27,7 +28,7 @@ public class TavilyClient {
     public TavilyResponse search(String query, int maxResults, String topic, boolean includeRawContent) {
         try {
             TavilyRequest request = new TavilyRequest(
-                tavilyConfig.getApiKey(), query, maxResults, topic, includeRawContent
+                query, maxResults, topic, includeRawContent
             );
             
             String json = objectMapper.writeValueAsString(request);
@@ -35,6 +36,7 @@ public class TavilyClient {
             
             Request httpRequest = new Request.Builder()
                 .url(tavilyConfig.getBaseUrl() + "/search")
+                .addHeader("Authorization", "Bearer " + tavilyConfig.getApiKey())
                 .post(body)
                 .build();
             
@@ -54,19 +56,21 @@ public class TavilyClient {
     }
     
     public record TavilyRequest(
-        @JsonProperty("api_key") String apiKey,
         String query,
         @JsonProperty("max_results") int maxResults,
         String topic,
         @JsonProperty("include_raw_content") boolean includeRawContent
     ) {}
     
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record TavilyResponse(List<SearchResult> results) {}
     
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record SearchResult(
         String url,
         String title,
         String content,
-        @JsonProperty("raw_content") String rawContent
+        @JsonProperty("raw_content") String rawContent,
+        Double score
     ) {}
 }
