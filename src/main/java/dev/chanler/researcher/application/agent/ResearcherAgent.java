@@ -18,6 +18,7 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.TokenUsage;
 import lombok.RequiredArgsConstructor;
@@ -82,6 +83,7 @@ public class ResearcherAgent {
             ChatRequest chatRequest = ChatRequest.builder()
                     .messages(agent.getMemory().messages())
                     .toolSpecifications(toolSpecifications)
+                    .toolChoice(ToolChoice.REQUIRED)
                     .build();
             ChatResponse chatResponse = agent.getChatModel().chat(chatRequest);
             TokenUsage tokenUsage = chatResponse.tokenUsage();

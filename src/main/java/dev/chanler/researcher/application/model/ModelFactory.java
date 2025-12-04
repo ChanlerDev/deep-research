@@ -8,6 +8,7 @@ import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -25,6 +26,12 @@ public class ModelFactory {
 
     private final Map<String, ChatModel> chatModelCache = new ConcurrentHashMap<>();
     private final Map<String, StreamingChatModel> streamingChatModelCache = new ConcurrentHashMap<>();
+
+    @Value("${llm.log.requests:false}")
+    private boolean logRequestsEnabled;
+
+    @Value("${llm.log.responses:false}")
+    private boolean logResponsesEnabled;
 
     public ChatModel createChatModel(Model model) {
         if (model == null || model.getId() == null) {
@@ -63,14 +70,18 @@ public class ModelFactory {
                 .baseUrl(model.getBaseUrl())
                 .apiKey(model.getApiKey())
                 .modelName(model.getModel())
+                .logRequests(logRequestsEnabled)
+                .logResponses(logResponsesEnabled)
                 .build();
     }
-    
+
     private StreamingChatModel buildStreamingChatModel(Model model) {
         return OpenAiStreamingChatModel.builder()
                 .baseUrl(model.getBaseUrl())
                 .apiKey(model.getApiKey())
                 .modelName(model.getModel())
+                .logRequests(logRequestsEnabled)
+                .logResponses(logResponsesEnabled)
                 .build();
     }
 }

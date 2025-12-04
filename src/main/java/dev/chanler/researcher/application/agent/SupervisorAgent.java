@@ -3,14 +3,14 @@ package dev.chanler.researcher.application.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
-import dev.chanler.researcher.infra.data.EventType;
 import dev.chanler.researcher.application.data.WorkflowStatus;
-import dev.chanler.researcher.infra.util.EventPublisher;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.application.state.DeepResearchState;
-import dev.chanler.researcher.application.tool.annotation.SupervisorTool;
-import dev.chanler.researcher.infra.exception.WorkflowException;
 import dev.chanler.researcher.application.tool.ToolRegistry;
+import dev.chanler.researcher.application.tool.annotation.SupervisorTool;
+import dev.chanler.researcher.infra.data.EventType;
+import dev.chanler.researcher.infra.exception.WorkflowException;
+import dev.chanler.researcher.infra.util.EventPublisher;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.SystemMessage;
@@ -18,6 +18,7 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.request.ToolChoice;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.TokenUsage;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static dev.chanler.researcher.application.prompt.SupervisorPrompts.LEAD_RESEARCHER_PROMPT;
 
@@ -44,10 +46,11 @@ public class SupervisorAgent {
     private final EventPublisher eventPublisher;
 
     private static final String SUPERVISOR_STAGE = SupervisorTool.class.getSimpleName();
+    private static final String TOOL_REMINDER = "上一轮未实际调用任何工具。请用 think_tool 先做规划，再以工具调用形式触发 conductResearch，想要结束时使用 researchComplete 结束。";
 
     public void run(DeepResearchState state) {
         state.setStatus(WorkflowStatus.IN_RESEARCH);
-        Long supervisorEventId = eventPublisher.publishEvent(state.getResearchId(), 
+        Long supervisorEventId = eventPublisher.publishEvent(state.getResearchId(),
                 EventType.SUPERVISOR, "开始规划研究路线...", state.getResearchBrief());
         state.setCurrentSupervisorEventId(supervisorEventId);
         AgentAbility agent = AgentAbility.builder()
@@ -56,8 +59,11 @@ public class SupervisorAgent {
                 .streamingChatModel(modelHandler.getStreamModel(state.getResearchId()))
                 .build();
         SystemMessage systemMessage = SystemMessage.from(
-                StrUtil.format(LEAD_RESEARCHER_PROMPT, DateUtil.today(), 
-                        state.getBudget().getMaxConcurrentUnits(), state.getBudget().getMaxConductCount()));
+                StrUtil.format(LEAD_RESEARCHER_PROMPT, Map.of(
+                        "date", DateUtil.today(),
+                        "max_concurrent_research_units", state.getBudget().getMaxConcurrentUnits(),
+                        "max_researcher_iterations", state.getBudget().getMaxConductCount()
+                )));
         agent.getMemory().add(systemMessage);
         agent.getMemory().add(UserMessage.from(state.getResearchBrief()));
         plan(agent, state);
@@ -68,12 +74,13 @@ public class SupervisorAgent {
         // 安全阀: supervisorIterations < maxConductCount * 2
         int maxConductCount = state.getBudget().getMaxConductCount();
         int maxIterations = maxConductCount * 2;
-        while (state.getConductCount() < maxConductCount 
+        while (state.getConductCount() < maxConductCount
                 && state.getSupervisorIterations() < maxIterations) {
             // 1. 获取决策
             List<ToolSpecification> toolSpecifications = toolRegistry.getToolSpecifications(SUPERVISOR_STAGE);
             ChatRequest chatRequest = ChatRequest.builder()
                     .toolSpecifications(toolSpecifications)
+                    .toolChoice(ToolChoice.REQUIRED)
                     .messages(agent.getMemory().messages())
                     .build();
             ChatResponse chatResponse = agent.getChatModel().chat(chatRequest);
@@ -82,18 +89,22 @@ public class SupervisorAgent {
             state.setTotalOutputTokens(state.getTotalOutputTokens() + tokenUsage.outputTokenCount());
             agent.getMemory().add(chatResponse.aiMessage());
 
-            // 2. 执行工具
-            action(agent, chatResponse.aiMessage().toolExecutionRequests(), state);
-            
-            // 3. 是否终止
-            if (!chatResponse.aiMessage().hasToolExecutionRequests()) {
-                break;
+            List<ToolExecutionRequest> toolExecutionRequests = chatResponse.aiMessage().toolExecutionRequests();
+            if (toolExecutionRequests == null || toolExecutionRequests.isEmpty()) {
+                agent.getMemory().add(UserMessage.from(TOOL_REMINDER));
+                state.setSupervisorIterations(state.getSupervisorIterations() + 1);
+                continue;
             }
-            if (chatResponse.aiMessage().toolExecutionRequests().stream()
+
+            // 2. 执行工具
+            action(agent, toolExecutionRequests, state);
+
+            // 3. 是否终止
+            if (toolExecutionRequests.stream()
                     .anyMatch(toolRequest -> "researchComplete".equals(toolRequest.name()))) {
                 break;
             }
-            
+
             state.setSupervisorIterations(state.getSupervisorIterations() + 1);
         }
     }
@@ -104,18 +115,18 @@ public class SupervisorAgent {
         }
         for (ToolExecutionRequest toolExecutionRequest : toolExecutionRequests) {
             String result;
-            
+
             if ("conductResearch".equals(toolExecutionRequest.name())) {
                 // 检查 conductResearch 调用次数限制
                 int maxConductCount = state.getBudget().getMaxConductCount();
                 if (state.getConductCount() >= maxConductCount) {
-                    log.warn("conductResearch count limit reached: {}/{}", 
+                    log.warn("conductResearch count limit reached: {}/{}",
                             state.getConductCount(), maxConductCount);
                     result = "已达到研究任务配额限制，请调用 researchComplete 完成研究";
                     agent.getMemory().add(ToolExecutionResultMessage.from(toolExecutionRequest, result));
                     continue;
                 }
-                
+
                 String researchTopic = null;
                 try {
                     var argsNode = objectMapper.readTree(toolExecutionRequest.arguments());
@@ -124,19 +135,19 @@ public class SupervisorAgent {
                     log.error("Failed to parse conductResearch arguments", e);
                     throw new WorkflowException("Failed to parse conductResearch arguments", e);
                 }
-                
+
                 Long planEventId = eventPublisher.publishEvent(state.getResearchId(), EventType.SUPERVISOR,
                         "正在研究: " + researchTopic, null, state.getCurrentSupervisorEventId());
                 state.setCurrentResearchEventId(planEventId);
-                
+
                 // 设置 researcher 相关字段
                 state.setResearchTopic(researchTopic);
                 state.setResearcherIterations(0);
                 state.setSearchCount(0);  // 重置搜索计数
                 state.setResearcherNotes(new ArrayList<>());
-                
+
                 result = researcherAgent.run(state);
-                
+
                 // 增加 conductCount
                 state.setConductCount(state.getConductCount() + 1);
             } else {
@@ -147,7 +158,7 @@ public class SupervisorAgent {
                 }
                 result = executor.execute(toolExecutionRequest, null);
             }
-            
+
             if (toolExecutionRequest.name().equals("thinkTool")) {
                 eventPublisher.publishEvent(state.getResearchId(), EventType.SUPERVISOR,
                         "思考中...", result, state.getCurrentSupervisorEventId());
@@ -155,7 +166,7 @@ public class SupervisorAgent {
             } else if (toolExecutionRequest.name().equals("conductResearch")) {
                 state.getSupervisorNotes().add(result);
             }
-            
+
             agent.getMemory().add(ToolExecutionResultMessage.from(toolExecutionRequest, result));
         }
     }
