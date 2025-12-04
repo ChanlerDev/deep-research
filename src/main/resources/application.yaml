@@ -52,3 +52,6 @@ google:
 jwt:
   secret: ${JWT_SECRET:deep-research-jwt-secret-key-must-be-at-least-32-chars}
   expiration: 10080
+
+app:
+  time-zone: ${APP_TIME_ZONE:Asia/Shanghai}
