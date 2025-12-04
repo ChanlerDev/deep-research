@@ -5,13 +5,13 @@ import path from 'path'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const apiProxyTarget = env.API_PROXY_TARGET || 'http://localhost:8080'
+  const apiBase = env.API_BASE_URL || 'http://localhost:8080'
 
   return {
     plugins: [react()],
     define: {
       'import.meta.env.GOOGLE_CLIENT_ID': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
-      'import.meta.env.API_BASE_URL': JSON.stringify(env.API_BASE_URL || '/api/v1'),
+      'import.meta.env.API_BASE_URL': JSON.stringify(apiBase),
     },
     resolve: {
       alias: {
@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': {
-          target: apiProxyTarget,
+          target: apiBase,
           changeOrigin: true,
         },
       },

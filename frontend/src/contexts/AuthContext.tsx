@@ -1,5 +1,13 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { authService, getToken, setToken, removeToken, UserInfo, GOOGLE_CLIENT_ID } from '../services/auth';
+
+type GoogleIdConfig = {
+  client_id: string;
+  callback: (response: { credential: string }) => void;
+  auto_select?: boolean;
+  cancel_on_tap_outside?: boolean;
+  use_fedcm_for_prompt?: boolean;
+};
 
 interface AuthContextType {
   user: UserInfo | null;
@@ -8,6 +16,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
   loginWithGoogle: (credential: string) => Promise<void>;
+  startGoogleOAuth: () => void;
   logout: () => void;
   openAuthModal: () => void;
   closeAuthModal: () => void;
@@ -32,6 +41,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const googleReadyRef = useRef(false);
+  const oneTapRetryRef = useRef(0);
+
+  const hideGoogleOneTap = useCallback(() => {
+    if (typeof google !== 'undefined' && google.accounts?.id) {
+      const googleId = google.accounts.id as typeof google.accounts.id & { enableAutoSelect?: () => void };
+      googleId.cancel();
+      if (typeof googleId.disableAutoSelect === 'function') {
+        googleId.disableAutoSelect();
+      }
+    }
+  }, []);
+
+  const promptGoogleOneTap = useCallback(function promptFn() {
+    if (!googleReadyRef.current || typeof google === 'undefined' || !google.accounts?.id || user) {
+      return;
+    }
+    google.accounts.id.prompt((notification: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean }) => {
+      const notDisplayed = notification.isNotDisplayed?.();
+      const skipped = notification.isSkippedMoment?.();
+      if ((notDisplayed || skipped) && oneTapRetryRef.current < 3) {
+        oneTapRetryRef.current += 1;
+        setTimeout(() => {
+          promptFn();
+        }, 1500);
+      }
+      if (!notDisplayed && !skipped) {
+        oneTapRetryRef.current = 0;
+      }
+    });
+  }, [user]);
 
   const fetchUser = useCallback(async () => {
     const token = getToken();
@@ -57,13 +97,49 @@ export function AuthProvider({ children }: AuthProviderProps) {
     fetchUser();
   }, [fetchUser]);
 
+  useEffect(() => {
+    if (!user && isAuthModalOpen) {
+      promptGoogleOneTap();
+    }
+  }, [isAuthModalOpen, user, promptGoogleOneTap]);
+
+  const login = async (username: string, password: string) => {
+    const response = await authService.login(username, password);
+    setToken(response.token);
+    await fetchUser();
+    setIsAuthModalOpen(false);
+    hideGoogleOneTap();
+    // Refresh history list after login
+    window.dispatchEvent(new Event('refreshHistory'));
+  };
+
+  const register = async (username: string, password: string) => {
+    const response = await authService.register(username, password);
+    setToken(response.token);
+    await fetchUser();
+    setIsAuthModalOpen(false);
+    hideGoogleOneTap();
+    // Refresh history list after register
+    window.dispatchEvent(new Event('refreshHistory'));
+  };
+
+  const loginWithGoogle = async (credential: string) => {
+    const response = await authService.googleOneTap(credential);
+    setToken(response.token);
+    await fetchUser();
+    setIsAuthModalOpen(false);
+    hideGoogleOneTap();
+    // Refresh history list after Google login
+    window.dispatchEvent(new Event('refreshHistory'));
+  };
+
   // Initialize Google One Tap - only when NOT loading and NOT authenticated
   useEffect(() => {
     // Wait for auth check to complete and only show One Tap if not logged in
     if (!GOOGLE_CLIENT_ID || isLoading || user) {
       // Cancel any existing One Tap prompt if user is logged in
-      if (user && typeof google !== 'undefined' && google.accounts) {
-        google.accounts.id.cancel();
+      if (user) {
+        hideGoogleOneTap();
       }
       return;
     }
@@ -71,7 +147,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const initializeGoogleOneTap = () => {
       if (typeof google === 'undefined' || !google.accounts) return;
 
-      google.accounts.id.initialize({
+      const config: GoogleIdConfig = {
         client_id: GOOGLE_CLIENT_ID,
         callback: async (response: { credential: string }) => {
           try {
@@ -81,15 +157,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
           }
         },
         auto_select: false,
-        cancel_on_tap_outside: true,
-      });
+        cancel_on_tap_outside: false,
+        use_fedcm_for_prompt: true,
+      };
 
-      // Show One Tap prompt
-      google.accounts.id.prompt((notification: { isNotDisplayed: () => boolean; isSkippedMoment: () => boolean }) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          console.log('One Tap not displayed');
-        }
-      });
+      google.accounts.id.initialize(config);
+      googleReadyRef.current = true;
+      oneTapRetryRef.current = 0;
+      promptGoogleOneTap();
     };
 
     // Load Google Identity Services script
@@ -105,41 +180,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
       newScript.onload = initializeGoogleOneTap;
       document.head.appendChild(newScript);
     }
-  }, [isLoading, user]);
+  }, [isLoading, user, hideGoogleOneTap, promptGoogleOneTap, loginWithGoogle]);
 
-  const login = async (username: string, password: string) => {
-    const response = await authService.login(username, password);
-    setToken(response.token);
-    await fetchUser();
-    setIsAuthModalOpen(false);
-    // Refresh history list after login
-    window.dispatchEvent(new Event('refreshHistory'));
-  };
-
-  const register = async (username: string, password: string) => {
-    const response = await authService.register(username, password);
-    setToken(response.token);
-    await fetchUser();
-    setIsAuthModalOpen(false);
-    // Refresh history list after register
-    window.dispatchEvent(new Event('refreshHistory'));
-  };
-
-  const loginWithGoogle = async (credential: string) => {
-    const response = await authService.googleOneTap(credential);
-    setToken(response.token);
-    await fetchUser();
-    setIsAuthModalOpen(false);
-    // Refresh history list after Google login
-    window.dispatchEvent(new Event('refreshHistory'));
+  const startGoogleOAuth = () => {
+    const url = authService.getGoogleAuthUrl();
+    if (!url) {
+      console.error('Google OAuth URL 未配置');
+      return;
+    }
+    window.location.href = url;
   };
 
   const logout = () => {
     authService.logout();
     setUser(null);
-    // Also sign out from Google
-    if (typeof google !== 'undefined' && google.accounts) {
-      google.accounts.id.disableAutoSelect();
+    // Allow One Tap to show again after logout
+    if (typeof google !== 'undefined' && google.accounts?.id) {
+      const googleId = google.accounts.id as typeof google.accounts.id & { enableAutoSelect?: () => void };
+      googleId.cancel();
+      if (typeof googleId.enableAutoSelect === 'function') {
+        googleId.enableAutoSelect();
+      }
     }
   };
 
@@ -153,6 +214,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [isLoading, user]);
 
+  useEffect(() => {
+    if (user) {
+      hideGoogleOneTap();
+    }
+  }, [user, hideGoogleOneTap]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -162,6 +229,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         login,
         register,
         loginWithGoogle,
+        startGoogleOAuth,
         logout,
         openAuthModal,
         closeAuthModal,

@@ -1,14 +1,18 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams, Link, useLocation } from 'react-router-dom';
-import { Plus, FileText, Loader2, Send, AlertCircle, Sparkles, Search, Brain, Globe, FileSearch, Zap, User, Bot, CheckCircle2, ChevronDown, PanelLeftClose, PanelLeftOpen, MessageSquare, Clock, Coins, ChevronsUpDown } from 'lucide-react';
+import { Plus, FileText, Loader2, Send, AlertCircle, Sparkles, Search, Brain, Globe, FileSearch, Zap, User, Bot, CheckCircle2, ChevronDown, PanelLeftClose, PanelLeftOpen, MessageSquare, Clock, Coins, ChevronsUpDown, RefreshCw, Shield, Copy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
-import { researchApi, getUserId, ResearchStatusResponse, ChatMessage, WorkflowEvent, ModelInfo, SendMessageRequest } from './services/api';
+import { researchApi, modelApi, ResearchStatusResponse, ChatMessage, WorkflowEvent, ModelInfo, SendMessageRequest } from './services/api';
 import { getToken } from './services/auth';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AuthModal } from './components/AuthModal';
 import { UserMenu } from './components/UserMenu';
 import { OAuthCallback } from './pages/OAuthCallback';
+import { ModelManagerModal } from './components/ModelManagerModal';
+import { BUDGET_OPTIONS, BudgetValue } from './constants/budget';
+import ArenaPage from './pages/ArenaPage';
 
 // --- Types & Helpers ---
 
@@ -17,6 +21,7 @@ type ViewState = 'home' | 'loading' | 'chat' | 'failed';
 interface ResearchState {
   id: string;
   title: string;
+  model?: string;
   status: string;
   messages: ChatMessage[];
   events: WorkflowEvent[];
@@ -95,6 +100,24 @@ function getStatusIcon(status: string) {
   }
 }
 
+type HistoryUpdateDetail = {
+  id: string;
+  status?: string;
+  title?: string;
+};
+
+const REFRESH_HISTORY_EVENT = 'refreshHistory';
+const HISTORY_UPDATE_EVENT = 'historyStatusUpdate';
+
+const ACTIVE_HISTORY_STATUSES = new Set([
+  'QUEUE',
+  'START',
+  'RUNNING',
+  'IN_SCOPE',
+  'IN_RESEARCH',
+  'IN_REPORT',
+]);
+
 // --- Components ---
 
 function Sidebar({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) {
@@ -103,24 +126,75 @@ function Sidebar({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) {
   const navigate = useNavigate();
   const { id: currentId } = useParams();
   const location = useLocation();
+  const historyLoadInFlightRef = useRef(false);
+  const pendingHistoryRefreshRef = useRef(false);
+  const initialLoadRef = useRef(true);
   
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async function loadHistoryInternal(options: { showSpinner?: boolean } = {}) {
+    if (historyLoadInFlightRef.current) {
+      pendingHistoryRefreshRef.current = true;
+      return;
+    }
+    historyLoadInFlightRef.current = true;
+    if (options.showSpinner) {
+      setLoading(true);
+    }
     try {
       const list = await researchApi.getHistory();
-      setHistory(list);
+      const filtered = list.filter((item) => item.status?.toUpperCase() !== 'NEW');
+      setHistory(filtered);
     } catch (e) {
       console.error('Failed to load history', e);
     } finally {
+      historyLoadInFlightRef.current = false;
       setLoading(false);
+      if (pendingHistoryRefreshRef.current) {
+        pendingHistoryRefreshRef.current = false;
+        loadHistoryInternal();
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadHistory();
+    loadHistory({ showSpinner: initialLoadRef.current });
+    initialLoadRef.current = false;
     const handleRefresh = () => loadHistory();
-    window.addEventListener('refreshHistory', handleRefresh);
-    return () => window.removeEventListener('refreshHistory', handleRefresh);
-  }, [location.pathname]);
+    window.addEventListener(REFRESH_HISTORY_EVENT, handleRefresh);
+    return () => window.removeEventListener(REFRESH_HISTORY_EVENT, handleRefresh);
+  }, [location.pathname, loadHistory]);
+
+  const hasActiveHistory = useMemo(() => history.some(item => ACTIVE_HISTORY_STATUSES.has(item.status?.toUpperCase() || '')), [history]);
+
+  useEffect(() => {
+    if (!hasActiveHistory) return;
+    const intervalId = window.setInterval(() => loadHistory(), 5000);
+    return () => window.clearInterval(intervalId);
+  }, [hasActiveHistory, loadHistory]);
+
+  useEffect(() => {
+    const handleHistoryStatusUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<HistoryUpdateDetail>).detail;
+      if (!detail) return;
+      setHistory(prev => {
+        if (!prev || prev.length === 0) return prev;
+        let matched = false;
+        const next = prev.map(item => {
+          if (item.id !== detail.id) return item;
+          matched = true;
+          return {
+            ...item,
+            status: detail.status || item.status,
+            title: detail.title || item.title,
+          };
+        });
+        return matched ? next : prev;
+      });
+    };
+    window.addEventListener(HISTORY_UPDATE_EVENT, handleHistoryStatusUpdate);
+    return () => window.removeEventListener(HISTORY_UPDATE_EVENT, handleHistoryStatusUpdate);
+  }, []);
+
+  const isArenaActive = location.pathname.startsWith('/arena');
 
   return (
     <aside className={`bg-gray-50 border-r border-gray-200 flex flex-col shrink-0 transition-all duration-300 ease-in-out ${isOpen ? 'w-72 translate-x-0' : 'w-0 -translate-x-full opacity-0 overflow-hidden border-r-0'}`}>
@@ -136,13 +210,20 @@ function Sidebar({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) {
         </button>
       </div>
       
-      <div className="p-3">
+      <div className="p-3 space-y-2">
         <button
           onClick={() => navigate('/new')}
           className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
         >
           <Plus className="w-4 h-4" />
           New Research
+        </button>
+        <button
+          onClick={() => navigate('/arena')}
+          className={`w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${isArenaActive ? 'bg-white border-black text-black' : 'border-gray-200 text-gray-700 hover:bg-gray-100'}`}
+        >
+          <Zap className="w-4 h-4" />
+          LLM Arena
         </button>
       </div>
 
@@ -186,22 +267,76 @@ function Sidebar({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) {
 function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   
   const [viewState, setViewState] = useState<ViewState>('home');
   const [currentResearch, setCurrentResearch] = useState<ResearchState | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [clientId] = useState(() => {
+    const createId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `client-${Math.random().toString(36).slice(2)}`);
+    if (typeof window === 'undefined' || !window.sessionStorage) {
+      return createId();
+    }
+    const cached = window.sessionStorage.getItem('dr-client-id');
+    if (cached) return cached;
+    const id = createId();
+    window.sessionStorage.setItem('dr-client-id', id);
+    return id;
+  });
   
   // Model state
   const [modelList, setModelList] = useState<ModelInfo[]>([]);
-  const [selectedModelType, setSelectedModelType] = useState<'free' | 'custom'>('free');
-  const [selectedFreeModel, setSelectedFreeModel] = useState<string>('');
-  const [customModelConfig, setCustomModelConfig] = useState({ modelName: '', baseUrl: '', apiKey: '' });
+  const [modelListLoading, setModelListLoading] = useState(false);
+  const [selectedModelId, setSelectedModelId] = useState('');
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const [isModelManagerOpen, setIsModelManagerOpen] = useState(false);
+  const selectedModelInfo = useMemo(() => modelList.find(m => m.id === selectedModelId), [modelList, selectedModelId]);
+  const refreshModelList = useCallback(async (nextSelectedId?: string) => {
+    if (!isAuthenticated) {
+      setModelList([]);
+      setSelectedModelId('');
+      setModelListLoading(false);
+      return;
+    }
+    setModelListLoading(true);
+    try {
+      const list = await modelApi.getAvailableModels();
+      setModelList(list);
+      setSelectedModelId((prevSelected) => {
+        if (nextSelectedId && list.some((m) => m.id === nextSelectedId)) {
+          return nextSelectedId;
+        }
+        if (prevSelected && list.some((m) => m.id === prevSelected)) {
+          return prevSelected;
+        }
+        return list[0]?.id || '';
+      });
+    } catch (error) {
+      console.error('Failed to load models', error);
+      if (nextSelectedId) {
+        setSelectedModelId('');
+      }
+    } finally {
+      setModelListLoading(false);
+    }
+  }, [isAuthenticated]);
+  const groupedModels = useMemo(() => ({
+    platform: modelList.filter((m) => m.type === 'GLOBAL'),
+    user: modelList.filter((m) => m.type === 'USER'),
+  }), [modelList]);
+  const modelDictionary = useMemo(() => {
+    const map: Record<string, ModelInfo> = {};
+    modelList.forEach((model) => {
+      map[model.id] = model;
+    });
+    return map;
+  }, [modelList]);
   
   // Budget state
-  const [selectedBudget, setSelectedBudget] = useState<'MEDIUM' | 'HIGH' | 'ULTRA'>('HIGH');
+  const [selectedBudget, setSelectedBudget] = useState<BudgetValue>('HIGH');
+  const [copiedMessageId, setCopiedMessageId] = useState<ChatMessage['id'] | null>(null);
 
   // Events expand/collapse state
   const [allEventsExpanded, setAllEventsExpanded] = useState(false);
@@ -211,17 +346,28 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
+  const lastEventIdMapRef = useRef<Record<string, string | undefined>>({});
+  const activeResearchRef = useRef<string | null>(null);
+  const shouldAutoReconnectRef = useRef(false);
+  const copyResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finalReportRef = useRef<HTMLDivElement | null>(null);
+  const shouldScrollReportRef = useRef(false);
+  const lastViewedResearchIdRef = useRef<string | null>(null);
+  const draftResearchIdRef = useRef<string | null>(null);
+  const preparingDraftRef = useRef(false);
+  const activeResearchLoadRef = useRef<{ id: string; token: symbol } | null>(null);
 
   // --- Effects ---
 
   useEffect(() => {
-    researchApi.getModelList().then(list => {
-      setModelList(list);
-      if (list.length > 0) {
-        setSelectedFreeModel(list[0].modelName);
-      }
-    }).catch(console.error);
-  }, []);
+    refreshModelList();
+  }, [refreshModelList]);
+
+  useEffect(() => {
+    if (!id) {
+      refreshModelList();
+    }
+  }, [id, refreshModelList]);
 
   useEffect(() => {
     if (id) {
@@ -257,17 +403,183 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (copyResetTimeoutRef.current) {
+        clearTimeout(copyResetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    finalReportRef.current = null;
+  }, [currentResearch?.id]);
+
+  useEffect(() => {
+    if (id && id !== lastViewedResearchIdRef.current) {
+      lastViewedResearchIdRef.current = id;
+      shouldScrollReportRef.current = true;
+    }
+  }, [id]);
+
+
+
   // --- Logic ---
 
+  const handleCopyMessage = useCallback(async (messageId: ChatMessage['id'], content: string) => {
+    if (!content) return;
+    if (typeof navigator === 'undefined' || !navigator.clipboard) {
+      console.warn('当前环境不支持剪贴板复制');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      if (copyResetTimeoutRef.current) {
+        clearTimeout(copyResetTimeoutRef.current);
+      }
+      copyResetTimeoutRef.current = setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (err) {
+      console.error('复制消息失败', err);
+    }
+  }, []);
+
+  const renderCopyButton = useCallback((message: ChatMessage, isUser: boolean) => {
+    if (!message?.content) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => handleCopyMessage(message.id, message.content)}
+        className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-full border transition-colors flex-none whitespace-nowrap mt-1 ${isUser ? 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+        aria-label="复制消息"
+      >
+        {copiedMessageId === message.id ? (
+          <>
+            <CheckCircle2 className="w-3 h-3" />
+            <span>已复制</span>
+          </>
+        ) : (
+          <>
+            <Copy className="w-3 h-3" />
+            <span>复制</span>
+          </>
+        )}
+      </button>
+    );
+  }, [copiedMessageId, handleCopyMessage]);
+
+  const prepareDraftResearch = useCallback(async () => {
+    if (draftResearchIdRef.current || preparingDraftRef.current) return;
+    preparingDraftRef.current = true;
+    try {
+      const history = await researchApi.getHistory();
+      const draft = history.find(item => item.status === 'NEW');
+      if (draft) {
+        draftResearchIdRef.current = draft.id;
+      } else {
+        const created = await researchApi.create();
+        const allocatedId = created.researchIds[0];
+        if (allocatedId) {
+          draftResearchIdRef.current = allocatedId;
+          window.dispatchEvent(new Event(REFRESH_HISTORY_EVENT));
+        }
+      }
+    } catch (error) {
+      console.error('准备可用研究失败', error);
+    } finally {
+      preparingDraftRef.current = false;
+    }
+  }, []);
+
+  const acquireDraftResearchId = useCallback(async () => {
+    if (!draftResearchIdRef.current) {
+      await prepareDraftResearch();
+    }
+    if (draftResearchIdRef.current) {
+      const allocated = draftResearchIdRef.current;
+      draftResearchIdRef.current = null;
+      return allocated;
+    }
+    const created = await researchApi.create();
+    const allocatedId = created.researchIds[0];
+    if (allocatedId) {
+      window.dispatchEvent(new Event(REFRESH_HISTORY_EVENT));
+      return allocatedId;
+    }
+    throw new Error('无法获取可用的研究 ID');
+  }, [prepareDraftResearch]);
+
+  useEffect(() => {
+    if (!id) {
+      prepareDraftResearch();
+    }
+  }, [id, prepareDraftResearch]);
+
+  const syncResearchStatus = useCallback(async (researchId: string) => {
+    try {
+      const statusResp = await researchApi.getStatus(researchId);
+      let hasChanged = false;
+      setCurrentResearch(prev => {
+        if (!prev || prev.id !== researchId) return prev;
+        const nextTitle = statusResp.title || prev.title;
+        const nextModel = statusResp.model || prev.model;
+        if (prev.status !== statusResp.status || prev.title !== nextTitle || prev.model !== nextModel) {
+          hasChanged = true;
+        }
+        return {
+          ...prev,
+          status: statusResp.status,
+          title: nextTitle,
+          model: nextModel,
+          startTime: statusResp.startTime ?? prev.startTime,
+          completeTime: statusResp.completeTime ?? prev.completeTime,
+          totalInputTokens: statusResp.totalInputTokens ?? prev.totalInputTokens,
+          totalOutputTokens: statusResp.totalOutputTokens ?? prev.totalOutputTokens,
+        };
+      });
+      if (hasChanged && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent<HistoryUpdateDetail>(HISTORY_UPDATE_EVENT, {
+          detail: {
+            id: researchId,
+            status: statusResp.status,
+            title: statusResp.title || undefined,
+          }
+        }));
+        window.dispatchEvent(new Event(REFRESH_HISTORY_EVENT));
+      }
+    } catch (error) {
+      console.error('同步研究状态失败', error);
+    }
+  }, []);
+
+  const beginResearchLoad = (researchId: string) => {
+    const token = Symbol('research-load');
+    activeResearchLoadRef.current = { id: researchId, token };
+    return token;
+  };
+
+  const isLatestResearchLoad = (researchId: string, token: symbol) => {
+    const current = activeResearchLoadRef.current;
+    return current?.id === researchId && current.token === token;
+  };
+
+  const clearResearchLoad = () => {
+    activeResearchLoadRef.current = null;
+  };
+
   const resetToNew = () => {
+    clearResearchLoad();
     setCurrentResearch(null);
     setViewState('chat');
     setError(null);
     setInputValue('');
+    lastEventIdMapRef.current = {};
+    activeResearchRef.current = null;
     disconnectSSE();
   };
 
   const loadResearch = async (researchId: string) => {
+    const loadToken = beginResearchLoad(researchId);
     setError(null);
     setViewState('loading');
     processedIdsRef.current.clear();
@@ -275,20 +587,32 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
 
     try {
       const status = await researchApi.getStatus(researchId);
+      if (!isLatestResearchLoad(researchId, loadToken)) {
+        return;
+      }
       
       let newState: ResearchState = {
         id: researchId,
         title: status.title || 'Untitled',
+        model: status.model || undefined,
         status: status.status,
         messages: [],
         events: []
       };
 
       if (status.status === 'NEW') {
-        setCurrentResearch(newState);
-        setViewState('chat');
+        if (isLatestResearchLoad(researchId, loadToken)) {
+          setCurrentResearch(newState);
+          setViewState('chat');
+        }
       } else {
+        if (!isLatestResearchLoad(researchId, loadToken)) {
+          return;
+        }
         const msgData = await researchApi.getMessages(researchId);
+        if (!isLatestResearchLoad(researchId, loadToken)) {
+          return;
+        }
         newState.messages = msgData.messages;
         newState.events = msgData.events;
         newState.startTime = msgData.startTime;
@@ -299,54 +623,96 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
         msgData.messages.forEach(m => processedIdsRef.current.add(`msg-${m.id}`));
         msgData.events.forEach(e => processedIdsRef.current.add(`evt-${e.id}`));
         
+        if (!isLatestResearchLoad(researchId, loadToken)) {
+          return;
+        }
         setCurrentResearch(newState);
         setViewState(status.status === 'FAILED' ? 'failed' : 'chat');
         
         if (status.status !== 'FAILED' && status.status !== 'COMPLETED') {
-          connectSSE(researchId);
+          if (!isLatestResearchLoad(researchId, loadToken)) {
+            return;
+          }
+          delete lastEventIdMapRef.current[researchId];
+          connectSSE(researchId, { resetCursor: true });
         }
       }
     } catch (e) {
-      setError('Failed to load research');
-      setViewState('failed');
+      if (isLatestResearchLoad(researchId, loadToken)) {
+        setError('Failed to load research');
+        setViewState('failed');
+      }
     }
   };
 
   const disconnectSSE = useCallback(() => {
+    shouldAutoReconnectRef.current = false;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    activeResearchRef.current = null;
     setIsConnected(false);
   }, []);
 
-  const connectSSE = useCallback((researchId: string) => {
-    disconnectSSE();
+  const connectSSE = useCallback((researchId: string, options?: { resetCursor?: boolean }) => {
+    if (!researchId) return;
+    shouldAutoReconnectRef.current = true;
+
+    const shouldResetCursor = options?.resetCursor || activeResearchRef.current !== researchId;
+    if (shouldResetCursor) {
+      delete lastEventIdMapRef.current[researchId];
+    }
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    activeResearchRef.current = researchId;
 
     const token = getToken();
+    const headers: Record<string, string> = {
+      'X-Research-Id': researchId,
+      'X-Client-Id': clientId,
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const lastEventId = lastEventIdMapRef.current[researchId];
+    if (lastEventId) {
+      headers['Last-Event-Id'] = lastEventId;
+    }
+
+    const scheduleReconnect = () => {
+      setIsConnected(false);
+      if (!shouldAutoReconnectRef.current || controller.signal.aborted) {
+        return;
+      }
+      setTimeout(() => connectSSE(researchId), 1000);
+    };
+
     fetchEventSource(researchApi.getSseUrl(), {
       method: 'GET',
-      headers: {
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        'X-User-Id': getUserId(),
-        'X-Research-Id': researchId,
-        'X-Client-Id': crypto.randomUUID(),
-      },
+      headers,
       signal: controller.signal,
       onopen: async (response) => {
-        if (response.ok) setIsConnected(true);
+        if (response.ok) {
+          setIsConnected(true);
+        } else {
+          scheduleReconnect();
+        }
       },
       onmessage: (msg) => {
+        if (msg.id) {
+          lastEventIdMapRef.current[researchId] = msg.id;
+        }
         if (msg.data?.startsWith('[DONE]')) {
            // 刷新最终状态
-           researchApi.getStatus(researchId).then(s => 
-             setCurrentResearch(prev => prev ? { ...prev, status: s.status, title: s.title || prev.title } : prev)
-           ).catch(() => {});
-           window.dispatchEvent(new Event('refreshHistory'));
-           return;
-        }
+          syncResearchStatus(researchId);
+          return;
+       }
         try {
           const data = JSON.parse(msg.data);
           
@@ -364,41 +730,58 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
               processedIdsRef.current.add(key);
               setCurrentResearch(prev => prev ? { ...prev, messages: [...prev.messages, chatMsg] } : prev);
               // 只在收到 message 时刷新状态（状态变化通常伴随消息）
-              researchApi.getStatus(researchId).then(s => 
-                setCurrentResearch(prev => prev ? { ...prev, status: s.status, title: s.title || prev.title } : prev)
-              ).catch(() => {});
+              syncResearchStatus(researchId);
             }
           }
         } catch (e) {}
       },
-      onclose: () => setIsConnected(false),
-      onerror: () => {}
+      onclose: scheduleReconnect,
+      onerror: () => {
+        scheduleReconnect();
+      }
     });
-  }, [disconnectSSE]);
+  }, [clientId, syncResearchStatus]);
 
   const sendMessage = async () => {
     if (!inputValue.trim()) return;
     const content = inputValue.trim();
     setInputValue('');
+    const resolvedModelId = currentResearch?.model || selectedModelId;
+    const needsModelSelection = !id || !currentResearch?.model;
+    if (needsModelSelection && !resolvedModelId) {
+      setError('当前没有可用模型，请先在「模型管理」中添加。');
+      setInputValue(content);
+      return;
+    }
 
     if (!id) {
       setViewState('loading');
       try {
-        const res = await researchApi.create();
-        const newId = res.researchIds[0];
-        
-        let modelConfig: Partial<SendMessageRequest> = {};
-        if (selectedModelType === 'free') {
-            modelConfig = { modelName: selectedFreeModel, budget: selectedBudget };
-        } else {
-            modelConfig = { 
-                modelName: customModelConfig.modelName, 
-                baseUrl: customModelConfig.baseUrl, 
-                apiKey: customModelConfig.apiKey,
-                budget: selectedBudget
-            };
+        const newId = await acquireDraftResearchId();
+        if (!newId) {
+          throw new Error('未找到可用的研究');
         }
+        const modelConfig: Partial<SendMessageRequest> = { modelId: resolvedModelId, budget: selectedBudget };
+        const tempMessage: ChatMessage = {
+          id: Date.now(),
+          researchId: newId,
+          role: 'user',
+          content,
+          createTime: new Date().toISOString()
+        };
 
+        setCurrentResearch({
+          id: newId,
+          title: 'Untitled',
+          model: selectedModelId,
+          status: 'RUNNING',
+          messages: [tempMessage],
+          events: []
+        });
+        processedIdsRef.current.clear();
+        setViewState('chat');
+
+        connectSSE(newId, { resetCursor: true });
         await researchApi.sendMessage(newId, content, modelConfig);
         navigate(`/research/${newId}`);
       } catch (e: any) {
@@ -410,7 +793,12 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
     }
 
     if (!currentResearch) return;
-    
+
+    const needsConnection = activeResearchRef.current !== currentResearch.id || !isConnected;
+    if (needsConnection) {
+      connectSSE(currentResearch.id);
+    }
+
     const userMsg: ChatMessage = {
       id: Date.now(),
       researchId: currentResearch.id,
@@ -418,16 +806,18 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
       content,
       createTime: new Date().toISOString()
     };
+    const shouldAttachModel = !currentResearch.model;
+    const modelConfig = shouldAttachModel ? { modelId: resolvedModelId, budget: selectedBudget } : undefined;
 
     setCurrentResearch(prev => prev ? {
       ...prev,
       status: 'RUNNING',
+      model: shouldAttachModel ? resolvedModelId : prev.model,
       messages: [...prev.messages, userMsg]
     } : prev);
 
     try {
-      await researchApi.sendMessage(currentResearch.id, content);
-      connectSSE(currentResearch.id);
+      await researchApi.sendMessage(currentResearch.id, content, modelConfig);
     } catch (e: any) {
       setError(e.message || 'Failed to send message');
     }
@@ -458,9 +848,18 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
     return items;
   }, [currentResearch?.messages, currentResearch?.events]);
 
-  const isNewChat = !id || (currentResearch && currentResearch.messages.length === 0);
+  useEffect(() => {
+    if (shouldScrollReportRef.current && currentResearch?.status === 'COMPLETED' && finalReportRef.current) {
+      finalReportRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      shouldScrollReportRef.current = false;
+    }
+  }, [currentResearch?.status, timelineItems]);
+
+  const effectiveResearchId = id || currentResearch?.id;
+  const isNewChat = !effectiveResearchId || (currentResearch ? currentResearch.messages.length === 0 : false);
 
   return (
+    <>
     <main className="flex-1 flex flex-col overflow-hidden bg-white relative">
       {viewState === 'loading' && !currentResearch && (
         <div className="flex-1 flex items-center justify-center">
@@ -479,6 +878,14 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
                   <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
                   <span className="text-xs text-gray-500">{currentResearch.status}</span>
                 </div>
+                {currentResearch.model && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Brain className="w-3 h-3" />
+                    <span>
+                      模型：{modelDictionary[currentResearch.model]?.name || modelDictionary[currentResearch.model]?.model || currentResearch.model}
+                    </span>
+                  </div>
+                )}
                 {/* Token stats */}
                 {(currentResearch.totalInputTokens || currentResearch.totalOutputTokens) && (
                   <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -536,14 +943,18 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
                 
                 if (isReport) {
                   return (
-                    <div key={`msg-${item.data.id}`} className="max-w-4xl mx-auto w-full">
+                    <div
+                      key={`msg-${item.data.id}`}
+                      ref={(el) => { if (el) finalReportRef.current = el; }}
+                      className="max-w-4xl mx-auto w-full"
+                    >
                       <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
                         <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-100">
                           <FileSearch className="w-5 h-5 text-black" />
                           <span className="font-bold text-lg">Final Report</span>
                         </div>
                         <article className="prose prose-gray max-w-none">
-                          <ReactMarkdown>{item.data.content}</ReactMarkdown>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.data.content}</ReactMarkdown>
                         </article>
                       </div>
                     </div>
@@ -554,10 +965,13 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isUser ? 'bg-black text-white' : 'bg-gray-200 text-gray-600'}`}>
                       {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                     </div>
-                    <div className={`max-w-2xl px-5 py-3 rounded-2xl ${isUser ? 'bg-gray-100 text-gray-900 rounded-tr-none' : 'bg-white border border-gray-200 text-gray-800 rounded-tl-none shadow-sm'}`}>
-                      <div className="whitespace-pre-wrap text-sm">
-                        {isUser ? item.data.content : <ReactMarkdown>{item.data.content}</ReactMarkdown>}
+                    <div className={`flex items-start gap-2 max-w-full ${isUser ? 'flex-row-reverse' : ''}`}>
+                      <div className={`max-w-2xl px-5 py-3 rounded-2xl ${isUser ? 'bg-gray-100 text-gray-900 rounded-tr-none' : 'bg-white border border-gray-200 text-gray-800 rounded-tl-none shadow-sm'}`}>
+                        <div className="whitespace-pre-wrap text-sm">
+                          {isUser ? item.data.content : <ReactMarkdown remarkPlugins={[remarkGfm]}>{item.data.content}</ReactMarkdown>}
+                        </div>
                       </div>
+                      {renderCopyButton(item.data, isUser)}
                     </div>
                   </div>
                 );
@@ -633,90 +1047,130 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
               />
               
-              <div className="w-full flex justify-between items-center px-2 pb-2 mt-2">
-                  <div className="relative">
-                    {isNewChat ? (
-                        <div className="flex items-center gap-2">
-                        {/* Budget Selector */}
-                        <div className="flex items-center bg-gray-100 rounded-xl p-1">
-                          {(['MEDIUM', 'HIGH', 'ULTRA'] as const).map((level) => (
+              <div className="w-full flex items-center gap-3 px-2 pb-2 mt-2">
+                {isNewChat ? (
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-none w-[220px]">
+                      <div className="flex items-center gap-1 text-[11px] font-medium text-gray-600 whitespace-nowrap">
+                        <Coins className="w-3.5 h-3.5 text-gray-500" />
+                        <span>研究预算</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 bg-white border border-gray-200 rounded-2xl shadow-sm h-11 p-1 w-full">
+                        {BUDGET_OPTIONS.map((option) => {
+                          const active = selectedBudget === option.value;
+                          return (
                             <button
-                              key={level}
-                              onClick={() => setSelectedBudget(level)}
-                              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-                                selectedBudget === level
-                                  ? 'bg-white text-gray-900 shadow-sm'
-                                  : 'text-gray-500 hover:text-gray-700'
+                              key={option.value}
+                              onClick={() => setSelectedBudget(option.value)}
+                              title={option.caption}
+                              className={`h-full px-2 rounded-xl text-left flex flex-col justify-center leading-tight transition-all ${
+                                active ? 'bg-black text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
                               }`}
                             >
-                              {level === 'MEDIUM' ? 'M' : level === 'HIGH' ? 'L' : 'H'}
+                              <span className="text-xs font-semibold">{option.label}</span>
+                              <span className={`text-[10px] ${active ? 'text-white/80' : 'text-gray-400'} hidden 2xl:block`}>{option.caption}</span>
                             </button>
-                          ))}
-                        </div>
-                        
-                        {/* Model Selector */}
-                        <div ref={modelMenuRef}>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-[320px]">
+                      <div className="flex items-center gap-1 text-[11px] font-medium text-gray-600 whitespace-nowrap">
+                        <Zap className="w-3.5 h-3.5 text-amber-500" />
+                        <span>模型选择</span>
+                      </div>
+                      <div ref={modelMenuRef} className="relative flex-1 min-w-[200px]">
                         <button
-                            onClick={() => setShowModelMenu(!showModelMenu)}
-                            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                          onClick={() => setShowModelMenu(!showModelMenu)}
+                          className="flex items-center gap-3 px-3 h-11 w-full text-left bg-white border border-gray-200 rounded-2xl shadow-sm hover:border-gray-300"
                         >
-                            <Zap className="w-4 h-4" />
-                            <span>{selectedModelType === 'free' ? (selectedFreeModel || 'Select Model') : 'Custom Model'}</span>
-                            <ChevronDown className="w-4 h-4 opacity-50" />
+                          <div className="flex flex-col text-sm min-w-0">
+                            <span className="font-medium text-gray-900 truncate">{selectedModelInfo?.name || '选择模型'}</span>
+                            <span className="text-[11px] text-gray-500 truncate hidden xl:block">{selectedModelInfo?.model || '点击挑选或新增模型'}</span>
+                          </div>
+                          <ChevronDown className={`w-4 h-4 text-gray-400 ml-auto transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                         </button>
 
                         {showModelMenu && (
-                            <div className="absolute bottom-full left-0 mb-2 w-[360px] bg-white border border-gray-200 rounded-xl shadow-xl p-4 animate-in fade-in zoom-in-95 origin-bottom-left z-50">
-                            <div className="flex gap-1 p-1 bg-gray-50 rounded-lg mb-4">
-                                <button
-                                onClick={() => setSelectedModelType('free')}
-                                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${selectedModelType === 'free' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-900'}`}
-                                >
-                                Free Models
-                                </button>
-                                <button
-                                onClick={() => setSelectedModelType('custom')}
-                                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${selectedModelType === 'custom' ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-gray-900'}`}
-                                >
-                                Custom Model
-                                </button>
+                          <div className="absolute bottom-full left-0 mb-2 w-full sm:w-[320px] bg-white border border-gray-200 rounded-2xl shadow-xl p-4 animate-in fade-in zoom-in-95 origin-bottom-left z-50">
+                            <div className="flex items-center justify-between mb-3">
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900">选择模型</p>
+                                <p className="text-[11px] text-gray-500">首条消息会锁定模型与凭证</p>
+                              </div>
+                              <button
+                                onClick={() => refreshModelList()}
+                                className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
+                                disabled={modelListLoading}
+                              >
+                                <RefreshCw className={`w-4 h-4 ${modelListLoading ? 'animate-spin' : ''}`} />
+                              </button>
                             </div>
 
-                            {selectedModelType === 'free' ? (
-                                <div className="space-y-2">
-                                    <label className="text-xs text-gray-500 font-medium ml-1 uppercase tracking-wider">Available Models</label>
-                                    <select 
-                                        value={selectedFreeModel} 
-                                        onChange={(e) => setSelectedFreeModel(e.target.value)} 
-                                        className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black/5"
-                                    >
-                                        {modelList.map(m => <option key={m.modelName} value={m.modelName}>{m.modelName}</option>)}
-                                        {modelList.length === 0 && <option disabled>Loading models...</option>}
-                                    </select>
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                <input type="text" placeholder="Model Name (e.g. gpt-4)" value={customModelConfig.modelName} onChange={(e) => setCustomModelConfig({...customModelConfig, modelName: e.target.value})} className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black/5" />
-                                <input type="text" placeholder="Base URL" value={customModelConfig.baseUrl} onChange={(e) => setCustomModelConfig({...customModelConfig, baseUrl: e.target.value})} className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black/5" />
-                                <input type="password" placeholder="API Key" value={customModelConfig.apiKey} onChange={(e) => setCustomModelConfig({...customModelConfig, apiKey: e.target.value})} className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black/5" />
-                                </div>
-                            )}
+                            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                              {[{ key: 'platform', label: '平台内置', icon: <Shield className="w-3.5 h-3.5 text-gray-500" />, models: groupedModels.platform, empty: '暂无内置模型，请联系管理员' },
+                                { key: 'user', label: '我的模型', icon: <User className="w-3.5 h-3.5 text-gray-500" />, models: groupedModels.user, empty: '暂无自定义模型，先在下方创建' }].map(section => (
+                                  <div key={section.key}>
+                                    <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                      {section.icon}
+                                      <span>{section.label}</span>
+                                      <span className="text-[10px] text-gray-400">({section.models.length})</span>
+                                    </div>
+                                    {section.models.length === 0 ? (
+                                      <p className="text-[11px] text-gray-400 ml-6 mt-1">{section.empty}</p>
+                                    ) : (
+                                      <div className="mt-2 space-y-1">
+                                        {section.models.map(model => {
+                                          const active = selectedModelId === model.id;
+                                          return (
+                                            <button
+                                              key={model.id}
+                                              onClick={() => { setSelectedModelId(model.id); setShowModelMenu(false); }}
+                                              className={`w-full text-left px-3 py-2 rounded-xl border text-sm transition-colors ${active ? 'border-black bg-black/5 text-gray-900' : 'border-gray-100 hover:border-gray-200 text-gray-700'}`}
+                                            >
+                                              <div className="flex items-center justify-between gap-2">
+                                                <span className="font-medium truncate">{model.name || model.model}</span>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full ${model.type === 'GLOBAL' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-600'}`}>
+                                                  {model.type === 'GLOBAL' ? '内置' : '自定义'}
+                                                </span>
+                                              </div>
+                                              <div className="text-[11px] text-gray-500 mt-1 truncate">ID：{model.model}</div>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                              ))}
                             </div>
+
+                            <div className="mt-4 space-y-2">
+                              {modelList.length === 0 && <p className="text-xs text-red-500">暂无可用模型，请先创建一个。</p>}
+                              <button
+                                onClick={() => { setShowModelMenu(false); setIsModelManagerOpen(true); }}
+                                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50"
+                              >
+                                <Plus className="w-4 h-4" />
+                                管理模型
+                              </button>
+                            </div>
+                          </div>
                         )}
-                        </div>
-                        </div>
-                    ) : (
-                        <div className="w-4" /> 
-                    )}
+                      </div>
+                    </div>
                   </div>
+                ) : (
+                  <div className="flex-1" />
+                )}
 
-                  <button 
-                      onClick={sendMessage} 
-                      disabled={!inputValue.trim()} 
-                      className={`ml-auto p-2 rounded-full transition-all shadow-sm ${inputValue.trim() ? 'bg-black text-white hover:bg-gray-800' : 'bg-gray-200 text-gray-400'}`}
-                  >
-                      <Send className="w-4 h-4" />
-                  </button>
+                <button 
+                    onClick={sendMessage} 
+                    disabled={!inputValue.trim()} 
+                    className={`flex-none p-2 rounded-full transition-all shadow-sm ${inputValue.trim() ? 'bg-black text-white hover:bg-gray-800' : 'bg-gray-200 text-gray-400'}`}
+                >
+                    <Send className="w-4 h-4" />
+                </button>
               </div>
             </div>
             )}
@@ -734,6 +1188,14 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
         </div>
       </div>
     </main>
+    <ModelManagerModal
+      isOpen={isModelManagerOpen}
+      onClose={() => setIsModelManagerOpen(false)}
+      models={modelList}
+      onRefresh={() => refreshModelList()}
+      onModelCreated={(modelId) => refreshModelList(modelId)}
+    />
+    </>
   );
 }
 
@@ -757,6 +1219,7 @@ function AppContent() {
         <Routes>
             <Route path="/research/:id" element={<ResearchPage sidebarOpen={sidebarOpen} />} />
             <Route path="/new" element={<ResearchPage sidebarOpen={sidebarOpen} />} />
+            <Route path="/arena" element={<ArenaPage sidebarOpen={sidebarOpen} />} />
             <Route path="/" element={<Navigate to="/new" replace />} />
         </Routes>
       </div>

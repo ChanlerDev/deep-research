@@ -1,12 +1,24 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 
-const API_PREFIX = import.meta.env.API_BASE_URL || '/api/v1';
-const API_BASE_URL = `${API_PREFIX}/user`;
+const getDefaultOrigin = () => {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return 'http://localhost:8080';
+};
+
+const API_ROOT = import.meta.env.API_BASE_URL || getDefaultOrigin();
+const API_BASE_URL = `${API_ROOT}/api/v1/user`;
 
 // Google OAuth Config
 export const GOOGLE_CLIENT_ID = import.meta.env.GOOGLE_CLIENT_ID || '';
-export const GOOGLE_CLIENT_SECRET = import.meta.env.GOOGLE_CLIENT_SECRET || '';
-export const REDIRECT_URI = import.meta.env.GOOGLE_REDIRECT_URI || 'https://research.chanler.dev/oauth2callback';
+const defaultRedirect = () => {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/oauth2callback`;
+  }
+  return 'https://research.chanler.dev/oauth2callback';
+};
+export const REDIRECT_URI = defaultRedirect();
 
 interface Result<T> {
   code: number;
@@ -22,10 +34,75 @@ export interface UserInfo {
   avatarUrl: string;
 }
 
-// Token management
-export const getToken = (): string | null => localStorage.getItem('token');
-export const setToken = (token: string) => localStorage.setItem('token', token);
-export const removeToken = () => localStorage.removeItem('token');
+type TokenListener = (token: string | null) => void;
+
+let inMemoryToken: string | null = null;
+const tokenListeners = new Set<TokenListener>();
+
+const readStoredToken = (): string | null => {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem('token');
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredToken = (token: string | null) => {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return;
+  }
+  try {
+    if (token) {
+      window.localStorage.setItem('token', token);
+    } else {
+      window.localStorage.removeItem('token');
+    }
+  } catch {
+    // 忽略存储异常，后续请求仍可从内存中读取 token
+  }
+};
+
+const notifyTokenListeners = (token: string | null) => {
+  tokenListeners.forEach((listener) => listener(token));
+};
+
+export const onTokenChange = (listener: TokenListener) => {
+  tokenListeners.add(listener);
+  return () => tokenListeners.delete(listener);
+};
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'token') {
+      inMemoryToken = event.newValue;
+      notifyTokenListeners(event.newValue);
+    }
+  });
+}
+
+export const getToken = (): string | null => {
+  if (inMemoryToken !== null) {
+    return inMemoryToken;
+  }
+  inMemoryToken = readStoredToken();
+  return inMemoryToken;
+};
+
+export const setToken = (token: string) => {
+  inMemoryToken = token;
+  writeStoredToken(token);
+  notifyTokenListeners(token);
+};
+
+export const removeToken = () => {
+  inMemoryToken = null;
+  writeStoredToken(null);
+  notifyTokenListeners(null);
+};
+
 export const isAuthenticated = () => !!getToken();
 
 // Create axios instance with auth header
@@ -34,14 +111,38 @@ const authApi = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+const applyAuthorizationHeader = (headers: any, token: string | null) => {
+  if (!headers) return;
+  if (token) {
+    if (typeof headers.set === 'function') {
+      headers.set('Authorization', `Bearer ${token}`);
+    } else {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  } else if (typeof headers.delete === 'function') {
+    headers.delete('Authorization');
+  } else if (headers.Authorization) {
+    delete headers.Authorization;
+  }
+};
+
 // Add auth token to requests
 authApi.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+    const headers = (config.headers = AxiosHeaders.from(config.headers as any));
+    applyAuthorizationHeader(headers, token);
   }
   return config;
 });
+
+const syncAuthApiDefaults = (token: string | null) => {
+  const headers = (authApi.defaults.headers.common = AxiosHeaders.from(authApi.defaults.headers.common as any));
+  applyAuthorizationHeader(headers, token);
+};
+
+syncAuthApiDefaults(getToken());
+onTokenChange(syncAuthApiDefaults);
 
 export const authService = {
   register: async (username: string, password: string): Promise<AuthResponse> => {

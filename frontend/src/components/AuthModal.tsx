@@ -6,12 +6,13 @@ import { GOOGLE_CLIENT_ID } from '../services/auth';
 type AuthMode = 'login' | 'register';
 
 export function AuthModal() {
-  const { isAuthModalOpen, closeAuthModal, login, register, loginWithGoogle } = useAuth();
+  const { isAuthModalOpen, closeAuthModal, login, register, loginWithGoogle, startGoogleOAuth } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isGoogleButtonReady, setGoogleButtonReady] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -19,6 +20,7 @@ export function AuthModal() {
       setUsername('');
       setPassword('');
       setError(null);
+      setGoogleButtonReady(false);
     }
   }, [isAuthModalOpen]);
 
@@ -44,6 +46,10 @@ export function AuthModal() {
         },
       });
 
+      if (googleButtonRef.current) {
+        googleButtonRef.current.innerHTML = '';
+      }
+
       google.accounts.id.renderButton(googleButtonRef.current!, {
         type: 'standard',
         theme: 'outline',
@@ -52,6 +58,8 @@ export function AuthModal() {
         shape: 'rectangular',
         width: 320,
       });
+
+      setGoogleButtonReady(true);
     };
 
     // Wait for Google script to load
@@ -126,9 +134,20 @@ export function AuthModal() {
             <>
               <div 
                 ref={googleButtonRef} 
-                className="flex justify-center mb-6"
+                className="flex justify-center mb-4"
               />
-              
+
+              {!isGoogleButtonReady && (
+                <button
+                  type="button"
+                  onClick={startGoogleOAuth}
+                  className="w-full mb-6 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-4 h-4" />
+                  使用 Google 账号登录
+                </button>
+              )}
+
               <div className="relative mb-6">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-gray-200" />

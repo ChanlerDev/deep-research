@@ -1,17 +1,16 @@
-import axios from 'axios';
-import { getToken } from './auth';
+import axios, { AxiosHeaders, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { getToken, onTokenChange } from './auth';
 
-const API_PREFIX = import.meta.env.API_BASE_URL || '/api/v1';
-const API_BASE_URL = `${API_PREFIX}/research`;
-
-// Get user ID - now handled by auth token, this is for legacy/guest support
-export const getUserId = () => {
-  const stored = localStorage.getItem('userId');
-  if (stored) return stored;
-  const newId = '1'; // Default/Guest user
-  localStorage.setItem('userId', newId);
-  return newId;
+const getDefaultOrigin = () => {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return 'http://localhost:8080';
 };
+
+const API_ROOT = import.meta.env.API_BASE_URL || getDefaultOrigin();
+const RESEARCH_BASE_URL = `${API_ROOT}/api/v1/research`;
+const MODEL_BASE_URL = `${API_ROOT}/api/v1/models`;
 
 // Backend Result wrapper
 interface Result<T> {
@@ -26,9 +25,7 @@ export interface CreateResearchResponse {
 
 export interface SendMessageRequest {
   content: string;
-  modelName?: string;
-  baseUrl?: string;
-  apiKey?: string;
+  modelId?: string;
   budget?: 'MEDIUM' | 'HIGH' | 'ULTRA';
 }
 
@@ -40,6 +37,7 @@ export interface SendMessageResponse {
 export interface ResearchStatusResponse {
   id: string;
   title?: string;
+  model?: string;
   status: string;
   startTime?: string;
   updateTime?: string;
@@ -81,37 +79,104 @@ export interface ResearchMessageResponse {
 }
 
 export interface ModelInfo {
-  modelName: string;
+  id: string;
+  type: string;
+  name: string;
   model: string;
+  baseUrl?: string;
 }
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
+export interface AddModelRequest {
+  name?: string;
+  model: string;
+  baseUrl: string;
+  apiKey: string;
+}
+
+const researchClient = axios.create({
+  baseURL: RESEARCH_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add auth token and user ID to all requests
-api.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  // Legacy user ID support for non-authenticated requests
-  config.headers['X-User-Id'] = getUserId();
-  return config;
+const modelApiInstance = axios.create({
+  baseURL: MODEL_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-export const researchApi = {
-  getModelList: async (): Promise<ModelInfo[]> => {
-    const response = await api.get<Result<ModelInfo[]>>(`/models/free`);
+const applyAuthorizationHeader = (headers: any, token: string | null) => {
+  if (!headers) return;
+  if (token) {
+    if (typeof headers.set === 'function') {
+      headers.set('Authorization', `Bearer ${token}`);
+    } else {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  } else if (typeof headers.delete === 'function') {
+    headers.delete('Authorization');
+  } else if (headers.Authorization) {
+    delete headers.Authorization;
+  }
+};
+
+const syncInstanceDefaults = (instance: AxiosInstance, token: string | null) => {
+  const headers = (instance.defaults.headers.common = AxiosHeaders.from(instance.defaults.headers.common as any));
+  applyAuthorizationHeader(headers, token);
+};
+
+const bootstrapToken = getToken();
+syncInstanceDefaults(researchClient, bootstrapToken);
+syncInstanceDefaults(modelApiInstance, bootstrapToken);
+
+onTokenChange((token) => {
+  syncInstanceDefaults(researchClient, token);
+  syncInstanceDefaults(modelApiInstance, token);
+});
+
+// Add auth token to all requests
+const addAuthInterceptor = (apiInstance: AxiosInstance) => {
+  apiInstance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+    const token = getToken();
+    if (token) {
+      const headers = (config.headers = AxiosHeaders.from(config.headers as any));
+      applyAuthorizationHeader(headers, token);
+    }
+    return config;
+  });
+};
+
+addAuthInterceptor(researchClient);
+addAuthInterceptor(modelApiInstance);
+
+export const modelApi = {
+  getAvailableModels: async (): Promise<ModelInfo[]> => {
+    const response = await modelApiInstance.get<Result<ModelInfo[]>>(``);
     if (response.data.code !== 0) return [];
     return response.data.data;
   },
 
+  addCustomModel: async (req: AddModelRequest): Promise<string> => {
+    const response = await modelApiInstance.post<Result<string>>(``, req);
+    if (response.data.code !== 0) {
+      throw new Error(response.data.message || 'Failed to add model');
+    }
+    return response.data.data;
+  },
+
+  deleteCustomModel: async (modelId: string): Promise<void> => {
+    const response = await modelApiInstance.delete<Result<string>>(`/${modelId}`);
+    if (response.data.code !== 0) {
+      throw new Error(response.data.message || 'Failed to delete model');
+    }
+  },
+};
+
+export const researchApi = {
   create: async (num: number = 1): Promise<CreateResearchResponse> => {
-    const response = await api.get<Result<CreateResearchResponse>>(`/create?num=${num}`);
+    const response = await researchClient.get<Result<CreateResearchResponse>>(`/create?num=${num}`);
     if (response.data.code !== 0) {
       throw new Error(response.data.message || 'Failed to create research');
     }
@@ -120,7 +185,7 @@ export const researchApi = {
 
   sendMessage: async (researchId: string, content: string, modelConfig?: Partial<SendMessageRequest>): Promise<SendMessageResponse> => {
     const payload: SendMessageRequest = { content, ...modelConfig };
-    const response = await api.post<Result<SendMessageResponse>>(`/research/${researchId}/messages`, payload);
+    const response = await researchClient.post<Result<SendMessageResponse>>(`/${researchId}/messages`, payload);
     if (response.data.code !== 0) {
       throw new Error(response.data.message || 'Failed to send message');
     }
@@ -128,7 +193,7 @@ export const researchApi = {
   },
 
   getStatus: async (researchId: string): Promise<ResearchStatusResponse> => {
-    const response = await api.get<Result<ResearchStatusResponse>>(`/research/${researchId}`);
+    const response = await researchClient.get<Result<ResearchStatusResponse>>(`/${researchId}`);
     if (response.data.code !== 0) {
       throw new Error(response.data.message || 'Failed to get status');
     }
@@ -136,7 +201,7 @@ export const researchApi = {
   },
 
   getMessages: async (researchId: string): Promise<ResearchMessageResponse> => {
-    const response = await api.get<Result<ResearchMessageResponse>>(`/research/${researchId}/messages`);
+    const response = await researchClient.get<Result<ResearchMessageResponse>>(`/${researchId}/messages`);
     if (response.data.code !== 0) {
       throw new Error(response.data.message || 'Failed to get messages');
     }
@@ -144,7 +209,7 @@ export const researchApi = {
   },
 
   getHistory: async (): Promise<ResearchStatusResponse[]> => {
-    const response = await api.get<Result<ResearchStatusResponse[]>>(`/list`);
+    const response = await researchClient.get<Result<ResearchStatusResponse[]>>(`/list`);
     if (response.data.code !== 0) {
        // If API doesn't exist yet, return empty list to avoid breaking UI
        // throw new Error(response.data.message || 'Failed to get history');
@@ -153,5 +218,5 @@ export const researchApi = {
     return response.data.data;
   },
   
-  getSseUrl: () => `${API_BASE_URL}/sse`
+  getSseUrl: () => `${RESEARCH_BASE_URL}/sse`
 };
