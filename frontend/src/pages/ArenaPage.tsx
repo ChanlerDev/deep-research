@@ -6,7 +6,7 @@ import { researchApi, modelApi, ModelInfo, ChatMessage, WorkflowEvent } from '..
 import { useAuth } from '../contexts/AuthContext';
 import { ModelManagerModal } from '../components/ModelManagerModal';
 import { BUDGET_OPTIONS, BudgetValue } from '../constants/budget';
-import { formatAppDateTime } from '../constants/time';
+import { formatAppDateTime, APP_TIME_ZONE } from '../constants/time';
 
 const MAX_MODELS = 3;
 const ACTIVE_STATUSES = new Set(['PENDING', 'NEW', 'QUEUE', 'START', 'RUNNING', 'IN_SCOPE', 'IN_RESEARCH', 'IN_REPORT']);
@@ -64,10 +64,42 @@ function getStatusMeta(status?: string): StatusMeta {
   return STATUS_META[key] || { label: status, color: 'text-gray-600', bg: 'bg-gray-100' };
 }
 
+/**
+ * 解析后端返回的时间字符串，确保时区正确
+ * 后端返回LocalDateTime格式（无时区后缀），需按服务器时区解析
+ */
+function parseServerTime(timeStr?: string): number {
+  if (!timeStr) return 0;
+  // 如果已有时区信息（Z 或 +/-），直接解析
+  if (/Z$|[+-]\d{2}:\d{2}$/.test(timeStr)) {
+    return new Date(timeStr).getTime();
+  }
+  // 无时区后缀，按APP_TIME_ZONE解析
+  // 创建一个formatter来获取当前时区偏移
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIME_ZONE,
+    timeZoneName: 'shortOffset',
+  });
+  const parts = formatter.formatToParts(new Date());
+  const tzPart = parts.find((p) => p.type === 'timeZoneName');
+  // 获取偏移如 "GMT+8" 并转换为 "+08:00"
+  let offset = '+00:00';
+  if (tzPart?.value) {
+    const match = tzPart.value.match(/GMT([+-]?)(\d+)?(?::(\d+))?/);
+    if (match) {
+      const sign = match[1] || '+';
+      const hours = (match[2] || '0').padStart(2, '0');
+      const mins = (match[3] || '0').padStart(2, '0');
+      offset = `${sign}${hours}:${mins}`;
+    }
+  }
+  return new Date(`${timeStr}${offset}`).getTime();
+}
+
 function formatDuration(start?: string, end?: string, status?: string) {
   if (!start) return '--';
-  const startMs = new Date(start).getTime();
-  const endMs = end ? new Date(end).getTime() : Date.now();
+  const startMs = parseServerTime(start);
+  const endMs = end ? parseServerTime(end) : Date.now();
   const diff = Math.max(endMs - startMs, 0);
   if (!Number.isFinite(diff) || diff <= 0) return '--';
   const seconds = Math.floor(diff / 1000);
@@ -80,10 +112,12 @@ function formatDuration(start?: string, end?: string, status?: string) {
 }
 
 function formatTokens(run: ArenaRun) {
-  const input = run.totalInputTokens ?? 0;
-  const output = run.totalOutputTokens ?? 0;
+  const input = run.totalInputTokens;
+  const output = run.totalOutputTokens;
+  // 没有数据或者都是0时显示 --
+  if ((input === undefined || input === null) && (output === undefined || output === null)) return '--';
   if (!input && !output) return '--';
-  return `输入 ${input} / 输出 ${output} / 合计 ${input + output}`;
+  return `输入 ${input || 0} / 输出 ${output || 0} / 合计 ${(input || 0) + (output || 0)}`;
 }
 
 function extractFinalMessage(messages: ChatMessage[]) {
@@ -460,123 +494,143 @@ export function ArenaPage({ sidebarOpen = true }: ArenaPageProps) {
           </div>
         </div>
 
-        <div className="bg-[#f4f4f4] rounded-2xl p-4 border border-transparent focus-within:border-gray-200">
-          {arenaError && (
-            <div className="mb-3 text-sm text-red-600 flex items-center gap-2"><AlertCircle className="w-4 h-4" />{arenaError}</div>
-          )}
-          <textarea
-            value={topicInput}
-            onChange={(e) => setTopicInput(e.target.value)}
-            placeholder="输入想要调研的主题..."
-            className="w-full bg-white rounded-2xl border border-gray-200 p-4 text-sm text-gray-900 min-h-[88px]"
-            disabled={isLaunching || arenaRuns.length > 0}
-          />
-
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Coins className="w-3.5 h-3.5" />预算策略</span>
-              <div className="grid grid-cols-3 gap-2">
-                {BUDGET_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => setSelectedBudget(option.value)}
-                    disabled={arenaRuns.length > 0}
-                    className={`px-3 py-2 rounded-xl text-left border text-sm ${selectedBudget === option.value ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-700 hover:bg-gray-100'}`}
-                  >
-                    <span className="font-semibold">{option.label}</span>
-                    <span className="block text-[11px] opacity-70">{option.caption}</span>
-                  </button>
-                ))}
+{/* 运行中：紧凑的一行摘要 */}
+        {arenaRuns.length > 0 ? (
+          <div className="bg-[#f4f4f4] rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <Bot className="w-4 h-4 text-gray-500" />
+                <span className="font-medium text-gray-900 max-w-[300px] truncate">{arenaTopic}</span>
+              </div>
+              <div className="h-4 w-px bg-gray-300" />
+              <div className="flex items-center gap-1.5 text-gray-600">
+                <Coins className="w-3.5 h-3.5" />
+                <span>{BUDGET_OPTIONS.find((b) => b.value === selectedBudget)?.label || selectedBudget}</span>
+              </div>
+              <div className="h-4 w-px bg-gray-300" />
+              <div className="flex items-center gap-1.5 text-gray-600">
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span>{arenaRuns.map((r) => r.modelName).join('、')}</span>
               </div>
             </div>
-
-            <div className="flex flex-col gap-2 col-span-1 lg:col-span-2">
-              <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Zap className="w-3.5 h-3.5 text-amber-500" />模型（最多{MAX_MODELS}个）</span>
-              <div ref={modelMenuRef} className="relative">
-                <button
-                  onClick={() => setShowModelMenu((prev) => !prev)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-2xl text-left"
-                  disabled={arenaRuns.length > 0}
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{selectedModelInfos.length ? `${selectedModelInfos.length} 个模型已选` : '选择模型'}</p>
-                    <p className="text-xs text-gray-500">
-                      {selectedModelInfos.map((m) => m?.name || m?.model).filter(Boolean).join('，') || '点击展开并挑选模型'}
-                    </p>
-                  </div>
-                  <ChevronsDownIcon />
-                </button>
-
-                {showModelMenu && (
-                  <div className="absolute z-50 mt-2 w-full bg-white border border-gray-200 rounded-2xl shadow-xl p-4">
-                    {[{ key: 'platform', label: '平台内置', icon: <Shield className="w-3.5 h-3.5" />, models: groupedModels.platform }, { key: 'user', label: '我的模型', icon: <User className="w-3.5 h-3.5" />, models: groupedModels.user }].map((section) => (
-                      <div key={section.key} className="mb-4 last:mb-0">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          {section.icon}
-                          <span>{section.label}</span>
-                          <span className="text-[10px] text-gray-400">({section.models.length})</span>
-                        </div>
-                        {section.models.length === 0 ? (
-                          <p className="text-xs text-gray-400 mt-1 ml-5">暂无模型</p>
-                        ) : (
-                          <div className="mt-2 space-y-2">
-                            {section.models.map((model) => {
-                              const checked = selectedModelIds.includes(model.id);
-                              const disabled = !checked && selectedModelIds.length >= MAX_MODELS;
-                              return (
-                                <label key={model.id} className={`flex items-center justify-between gap-2 p-3 border rounded-xl cursor-pointer ${checked ? 'border-black bg-black/5' : 'border-gray-200 hover:border-gray-300'} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                                  <div>
-                                    <p className="text-sm font-semibold text-gray-900">{model.name || model.model}</p>
-                                    <p className="text-xs text-gray-500">{model.model}</p>
-                                  </div>
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={disabled}
-                                    onChange={() => toggleModelSelection(model.id)}
-                                    className="w-4 h-4"
-                                  />
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <div className="mt-4 space-y-2">
-                      {selectedModelIds.length >= MAX_MODELS && <p className="text-xs text-amber-600">已达到选择上限</p>}
-                      <button
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm"
-                        onClick={() => { setShowModelMenu(false); setIsModelManagerOpen(true); }}
-                      >
-                        <PlusIcon /> 管理模型
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <button
+              onClick={() => handleReset()}
+              className="px-4 py-1.5 text-sm rounded-xl border border-gray-300 text-gray-600 hover:bg-gray-100"
+            >
+              清空并重新开始
+            </button>
           </div>
+        ) : (
+          /* 初始状态：完整输入界面 */
+          <div className="bg-[#f4f4f4] rounded-2xl p-4 border border-transparent focus-within:border-gray-200">
+            {arenaError && (
+              <div className="mb-3 text-sm text-red-600 flex items-center gap-2"><AlertCircle className="w-4 h-4" />{arenaError}</div>
+            )}
+            <textarea
+              value={topicInput}
+              onChange={(e) => setTopicInput(e.target.value)}
+              placeholder="输入想要调研的主题..."
+              className="w-full bg-white rounded-2xl border border-gray-200 p-4 text-sm text-gray-900 min-h-[88px]"
+              disabled={isLaunching}
+            />
 
-          <div className="mt-4 flex items-center justify-between">
-            <div className="text-xs text-gray-500">先在这里配置好主题、预算和模型，点击下方即可触发最多 3 个模型并行深入调研。</div>
-            <div className="flex items-center gap-2">
-              {arenaRuns.length > 0 && (
-                <button onClick={() => handleReset()} className="px-4 py-2 text-sm rounded-xl border border-gray-200 text-gray-600" >
-                  清空
-                </button>
-              )}
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Coins className="w-3.5 h-3.5" />预算策略</span>
+                <div className="grid grid-cols-3 gap-2">
+                  {BUDGET_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setSelectedBudget(option.value)}
+                      className={`px-3 py-2 rounded-xl text-left border text-sm ${selectedBudget === option.value ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-700 hover:bg-gray-100'}`}
+                    >
+                      <span className="font-semibold">{option.label}</span>
+                      <span className="block text-[11px] opacity-70">{option.caption}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 col-span-1 lg:col-span-2">
+                <span className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Zap className="w-3.5 h-3.5 text-amber-500" />模型（最多{MAX_MODELS}个）</span>
+                <div ref={modelMenuRef} className="relative">
+                  <button
+                    onClick={() => setShowModelMenu((prev) => !prev)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-2xl text-left"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{selectedModelInfos.length ? `${selectedModelInfos.length} 个模型已选` : '选择模型'}</p>
+                      <p className="text-xs text-gray-500">
+                        {selectedModelInfos.map((m) => m?.name || m?.model).filter(Boolean).join('，') || '点击展开并挑选模型'}
+                      </p>
+                    </div>
+                    <ChevronsDownIcon />
+                  </button>
+
+                  {showModelMenu && (
+                    <div className="absolute z-50 mt-2 w-full bg-white border border-gray-200 rounded-2xl shadow-xl p-4">
+                      {[{ key: 'platform', label: '平台内置', icon: <Shield className="w-3.5 h-3.5" />, models: groupedModels.platform }, { key: 'user', label: '我的模型', icon: <User className="w-3.5 h-3.5" />, models: groupedModels.user }].map((section) => (
+                        <div key={section.key} className="mb-4 last:mb-0">
+                          <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            {section.icon}
+                            <span>{section.label}</span>
+                            <span className="text-[10px] text-gray-400">({section.models.length})</span>
+                          </div>
+                          {section.models.length === 0 ? (
+                            <p className="text-xs text-gray-400 mt-1 ml-5">暂无模型</p>
+                          ) : (
+                            <div className="mt-2 space-y-2">
+                              {section.models.map((model) => {
+                                const checked = selectedModelIds.includes(model.id);
+                                const disabled = !checked && selectedModelIds.length >= MAX_MODELS;
+                                return (
+                                  <label key={model.id} className={`flex items-center justify-between gap-2 p-3 border rounded-xl cursor-pointer ${checked ? 'border-black bg-black/5' : 'border-gray-200 hover:border-gray-300'} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                                    <div>
+                                      <p className="text-sm font-semibold text-gray-900">{model.name || model.model}</p>
+                                      <p className="text-xs text-gray-500">{model.model}</p>
+                                    </div>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={disabled}
+                                      onChange={() => toggleModelSelection(model.id)}
+                                      className="w-4 h-4"
+                                    />
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <div className="mt-4 space-y-2">
+                        {selectedModelIds.length >= MAX_MODELS && <p className="text-xs text-amber-600">已达到选择上限</p>}
+                        <button
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm"
+                          onClick={() => { setShowModelMenu(false); setIsModelManagerOpen(true); }}
+                        >
+                          <PlusIcon /> 管理模型
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between">
+              <div className="text-xs text-gray-500">先在这里配置好主题、预算和模型，点击下方即可触发最多 3 个模型并行深入调研。</div>
               <button
                 onClick={startArena}
-                disabled={isLaunching || !topicInput.trim() || selectedModelIds.length === 0 || arenaRuns.length > 0}
-                className={`px-5 py-2.5 rounded-2xl text-sm font-semibold flex items-center gap-2 ${isLaunching || arenaRuns.length > 0 ? 'bg-gray-300 text-gray-500' : 'bg-black text-white hover:bg-gray-900'}`}
+                disabled={isLaunching || !topicInput.trim() || selectedModelIds.length === 0}
+                className={`px-5 py-2.5 rounded-2xl text-sm font-semibold flex items-center gap-2 ${isLaunching ? 'bg-gray-300 text-gray-500' : 'bg-black text-white hover:bg-gray-900'}`}
               >
                 {isLaunching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
                 发起对比
               </button>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-6 bg-gray-50">

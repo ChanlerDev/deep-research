@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams, Link, useLocation } from 'react-router-dom';
-import { Plus, FileText, Loader2, Send, AlertCircle, Sparkles, Search, Brain, Globe, FileSearch, Zap, User, Bot, CheckCircle2, ChevronDown, PanelLeftClose, PanelLeftOpen, MessageSquare, Clock, Coins, ChevronsUpDown, RefreshCw, Shield, Copy } from 'lucide-react';
+import { Plus, Loader2, Send, AlertCircle, Sparkles, Search, Brain, Globe, FileSearch, Zap, User, Bot, CheckCircle2, ChevronDown, PanelLeftClose, PanelLeftOpen, MessageSquare, Clock, Coins, ChevronsUpDown, RefreshCw, Shield, Copy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
@@ -123,12 +123,32 @@ const ACTIVE_HISTORY_STATUSES = new Set([
 function Sidebar({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) {
   const [history, setHistory] = useState<ResearchStatusResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modelList, setModelList] = useState<ModelInfo[]>([]);
   const navigate = useNavigate();
   const { id: currentId } = useParams();
   const location = useLocation();
+  const { isAuthenticated } = useAuth();
   const historyLoadInFlightRef = useRef(false);
   const pendingHistoryRefreshRef = useRef(false);
   const initialLoadRef = useRef(true);
+
+  // 模型字典用于显示model name
+  const modelDictionary = useMemo(() => {
+    const map: Record<string, ModelInfo> = {};
+    modelList.forEach((model) => {
+      map[model.id] = model;
+    });
+    return map;
+  }, [modelList]);
+
+  // 加载模型列表
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setModelList([]);
+      return;
+    }
+    modelApi.getAvailableModels().then(setModelList).catch(console.error);
+  }, [isAuthenticated]);
   
   const loadHistory = useCallback(async function loadHistoryInternal(options: { showSpinner?: boolean } = {}) {
     if (historyLoadInFlightRef.current) {
@@ -233,25 +253,31 @@ function Sidebar({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) {
           <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
         ) : (
           <div className="space-y-1">
-            {history.map((item) => (
-              <Link
-                key={item.id}
-                to={`/research/${item.id}`}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors block ${
-                  currentId === item.id ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <FileText className="w-4 h-4 mt-0.5 shrink-0" />
-                    <div className="truncate">{item.title || 'Untitled'}</div>
+            {history.map((item) => {
+              const modelInfo = item.model ? modelDictionary[item.model] : null;
+              const modelDisplayName = modelInfo?.name || modelInfo?.model || null;
+              return (
+                <Link
+                  key={item.id}
+                  to={`/research/${item.id}`}
+                  className={`w-full text-left px-3 py-2 rounded-lg transition-colors block ${
+                    currentId === item.id ? 'bg-gray-200 text-gray-900' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">{item.title || 'Untitled'}</div>
+                      {modelDisplayName && (
+                        <div className="text-[11px] text-gray-400 truncate mt-0.5">{modelDisplayName}</div>
+                      )}
+                    </div>
+                    <div className="shrink-0 mt-0.5">
+                      {getStatusIcon(item.status)}
+                    </div>
                   </div>
-                  <div className="shrink-0">
-                    {getStatusIcon(item.status)}
-                  </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>
