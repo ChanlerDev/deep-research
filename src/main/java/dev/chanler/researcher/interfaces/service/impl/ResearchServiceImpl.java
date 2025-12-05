@@ -15,7 +15,6 @@ import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.domain.mapper.ChatMessageMapper;
 import dev.chanler.researcher.domain.mapper.ResearchSessionMapper;
 import dev.chanler.researcher.domain.mapper.WorkflowEventMapper;
-import dev.chanler.researcher.domain.mapper.ModelMapper;
 import dev.chanler.researcher.infra.exception.ResearchException;
 import dev.chanler.researcher.interfaces.dto.req.SendMessageReqDTO;
 import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
@@ -96,10 +95,13 @@ public class ResearchServiceImpl implements ResearchService {
             return ResearchStatusRespDTO.builder()
                 .id(session.getId())
                 .title(session.getTitle())
+                .model(session.getModelId())
                 .status(session.getStatus())
                 .startTime(session.getStartTime())
                 .updateTime(session.getUpdateTime())
                 .completeTime(session.getCompleteTime())
+                .totalInputTokens(session.getTotalInputTokens())
+                .totalOutputTokens(session.getTotalOutputTokens())
                 .build();
         }).collect(Collectors.toList());
     }

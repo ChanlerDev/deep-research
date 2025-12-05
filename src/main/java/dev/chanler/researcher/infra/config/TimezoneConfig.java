@@ -1,11 +1,14 @@
 package dev.chanler.researcher.infra.config;
 
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.TimeZone;
 
 /**
@@ -29,6 +32,13 @@ public class TimezoneConfig {
 
     @Bean
     public Jackson2ObjectMapperBuilderCustomizer jacksonTimezoneCustomizer() {
-        return builder -> builder.timeZone(TimeZone.getTimeZone(configuredZoneId));
+        ZoneId zoneId = ZoneId.of(configuredZoneId);
+        // 输出带时区偏移的ISO格式，如 2024-12-05T08:30:00+08:00
+        String offset = zoneId.getRules().getOffset(java.time.Instant.now()).toString();
+        DateTimeFormatter offsetFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'" + offset + "'");
+        
+        return builder -> builder
+                .timeZone(TimeZone.getTimeZone(configuredZoneId))
+                .serializers(new LocalDateTimeSerializer(offsetFormatter));
     }
 }
