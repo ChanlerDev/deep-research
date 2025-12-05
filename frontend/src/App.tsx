@@ -1241,7 +1241,7 @@ function AppContent() {
         </button>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 w-full">
+      <div className="flex-1 flex flex-col min-w-0 w-full overflow-hidden">
         <Routes>
             <Route path="/research/:id" element={<ResearchPage sidebarOpen={sidebarOpen} />} />
             <Route path="/new" element={<ResearchPage sidebarOpen={sidebarOpen} />} />

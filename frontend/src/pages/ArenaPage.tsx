@@ -6,7 +6,7 @@ import { researchApi, modelApi, ModelInfo, ChatMessage, WorkflowEvent } from '..
 import { useAuth } from '../contexts/AuthContext';
 import { ModelManagerModal } from '../components/ModelManagerModal';
 import { BUDGET_OPTIONS, BudgetValue } from '../constants/budget';
-import { formatAppDateTime, APP_TIME_ZONE } from '../constants/time';
+import { formatAppDateTime } from '../constants/time';
 
 const MAX_MODELS = 3;
 const ACTIVE_STATUSES = new Set(['PENDING', 'NEW', 'QUEUE', 'START', 'RUNNING', 'IN_SCOPE', 'IN_RESEARCH', 'IN_REPORT']);
@@ -65,35 +65,13 @@ function getStatusMeta(status?: string): StatusMeta {
 }
 
 /**
- * 解析后端返回的时间字符串，确保时区正确
- * 后端返回LocalDateTime格式（无时区后缀），需按服务器时区解析
+ * 解析后端返回的时间字符串
+ * 后端已配置输出带时区偏移的ISO格式，直接解析即可
  */
 function parseServerTime(timeStr?: string): number {
   if (!timeStr) return 0;
-  // 如果已有时区信息（Z 或 +/-），直接解析
-  if (/Z$|[+-]\d{2}:\d{2}$/.test(timeStr)) {
-    return new Date(timeStr).getTime();
-  }
-  // 无时区后缀，按APP_TIME_ZONE解析
-  // 创建一个formatter来获取当前时区偏移
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: APP_TIME_ZONE,
-    timeZoneName: 'shortOffset',
-  });
-  const parts = formatter.formatToParts(new Date());
-  const tzPart = parts.find((p) => p.type === 'timeZoneName');
-  // 获取偏移如 "GMT+8" 并转换为 "+08:00"
-  let offset = '+00:00';
-  if (tzPart?.value) {
-    const match = tzPart.value.match(/GMT([+-]?)(\d+)?(?::(\d+))?/);
-    if (match) {
-      const sign = match[1] || '+';
-      const hours = (match[2] || '0').padStart(2, '0');
-      const mins = (match[3] || '0').padStart(2, '0');
-      offset = `${sign}${hours}:${mins}`;
-    }
-  }
-  return new Date(`${timeStr}${offset}`).getTime();
+  const ts = new Date(timeStr).getTime();
+  return Number.isNaN(ts) ? 0 : ts;
 }
 
 function formatDuration(start?: string, end?: string, status?: string) {
@@ -464,7 +442,7 @@ export function ArenaPage({ sidebarOpen = true }: ArenaPageProps) {
   })), [arenaRuns]);
 
   return (
-    <main className="flex-1 flex flex-col bg-white">
+    <main className="flex-1 flex flex-col overflow-hidden bg-white">
       <div className={`border-b border-gray-100 px-6 py-4 flex flex-col gap-4 ${!sidebarOpen ? 'pl-16' : ''}`}>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -669,7 +647,7 @@ export function ArenaPage({ sidebarOpen = true }: ArenaPageProps) {
             </div>
 
             {viewMode === 'grid' ? (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className={`grid gap-4 ${arenaRuns.length === 1 ? 'grid-cols-1' : arenaRuns.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'}`}>
                 {arenaRuns.map((run) => renderRunCard(run))}
               </div>
             ) : (
