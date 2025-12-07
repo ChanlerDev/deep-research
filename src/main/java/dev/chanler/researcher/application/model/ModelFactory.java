@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -32,6 +33,9 @@ public class ModelFactory {
 
     @Value("${llm.log.responses:false}")
     private boolean logResponsesEnabled;
+
+    @Value("${llm.timeout:120}")
+    private int timeout;
 
     public ChatModel createChatModel(Model model) {
         if (model == null || model.getId() == null) {
@@ -70,6 +74,7 @@ public class ModelFactory {
                 .baseUrl(model.getBaseUrl())
                 .apiKey(model.getApiKey())
                 .modelName(model.getModel())
+                .timeout(Duration.ofSeconds(timeout))
                 .logRequests(logRequestsEnabled)
                 .logResponses(logResponsesEnabled)
                 .build();
@@ -80,6 +85,7 @@ public class ModelFactory {
                 .baseUrl(model.getBaseUrl())
                 .apiKey(model.getApiKey())
                 .modelName(model.getModel())
+                .timeout(Duration.ofSeconds(timeout))
                 .logRequests(logRequestsEnabled)
                 .logResponses(logResponsesEnabled)
                 .build();
