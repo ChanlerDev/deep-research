@@ -37,7 +37,6 @@ import static dev.chanler.researcher.application.prompt.SupervisorPrompts.LEAD_R
 @Component
 @RequiredArgsConstructor
 @Slf4j
-// TODO: 实现 token 统计
 public class SupervisorAgent {
     private final ModelHandler modelHandler;
     private final ObjectMapper objectMapper;

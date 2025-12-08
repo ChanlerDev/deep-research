@@ -1,6 +1,5 @@
 package dev.chanler.researcher.infra.common;
 
-import dev.chanler.researcher.infra.exception.ResearchException;
 
 /**
  * @author: Chanler

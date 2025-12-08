@@ -1,7 +1,5 @@
 package dev.chanler.researcher.application.prompt;
 
-import lombok.Data;
-import lombok.Getter;
 import org.springframework.stereotype.Component;
 
 /**

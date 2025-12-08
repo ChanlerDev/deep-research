@@ -14,7 +14,6 @@ import dev.chanler.researcher.domain.entity.Model;
 import dev.chanler.researcher.application.model.ModelHandler;
 import dev.chanler.researcher.domain.mapper.ChatMessageMapper;
 import dev.chanler.researcher.domain.mapper.ResearchSessionMapper;
-import dev.chanler.researcher.domain.mapper.WorkflowEventMapper;
 import dev.chanler.researcher.infra.exception.ResearchException;
 import dev.chanler.researcher.interfaces.dto.req.SendMessageReqDTO;
 import dev.chanler.researcher.interfaces.dto.resp.CreateResearchRespDTO;
@@ -44,7 +43,6 @@ public class ResearchServiceImpl implements ResearchService {
 
     private final ResearchSessionMapper researchSessionMapper;
     private final ChatMessageMapper chatMessageMapper;
-    private final WorkflowEventMapper workflowEventMapper;
     private final AgentPipeline agentPipeline;
     private final CacheUtil cacheUtil;
     private final ModelHandler modelHandler;

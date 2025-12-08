@@ -12,7 +12,6 @@ import dev.chanler.researcher.application.data.WorkflowStatus;
 import dev.chanler.researcher.infra.util.EventPublisher;
 import dev.chanler.researcher.infra.util.MemoryUtil;
 import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -37,7 +36,6 @@ import static dev.chanler.researcher.application.prompt.ScopePrompts.TRANSFORM_M
 @Component
 @RequiredArgsConstructor
 @Slf4j
-// TODO: 实现 token 统计
 public class ScopeAgent {
     private final ModelHandler modelHandler;
     private final ObjectMapper objectMapper;
