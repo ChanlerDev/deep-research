@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS research_session (
     total_input_tokens  BIGINT UNSIGNED DEFAULT 0 COMMENT '累计输入Token数',
     total_output_tokens BIGINT UNSIGNED DEFAULT 0 COMMENT '累计输出Token数',
     KEY idx_user_status (user_id, status),
-    KEY idx_user_create (user_id, create_time)
+    KEY idx_user_update (user_id, update_time DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='研究会话';
 
 -- 模型表

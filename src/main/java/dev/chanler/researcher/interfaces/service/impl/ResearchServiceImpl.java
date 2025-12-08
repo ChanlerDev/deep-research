@@ -22,6 +22,7 @@ import dev.chanler.researcher.interfaces.dto.resp.ResearchMessageRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.ResearchStatusRespDTO;
 import dev.chanler.researcher.interfaces.dto.resp.SendMessageRespDTO;
 import dev.chanler.researcher.infra.config.BudgetProps;
+import dev.chanler.researcher.infra.data.TimelineItem;
 import dev.chanler.researcher.infra.util.CacheUtil;
 import dev.chanler.researcher.interfaces.service.ResearchService;
 import dev.chanler.researcher.interfaces.service.ModelService;
@@ -79,6 +80,12 @@ public class ResearchServiceImpl implements ResearchService {
                 .map(ResearchSession::getId)
                 .limit(num)
                 .collect(Collectors.toList());
+
+        // 为新创建的研究缓存权限映射
+        for (String researchId : researchIds) {
+            cacheUtil.cacheResearchOwnership(researchId, userId);
+        }
+
         return CreateResearchRespDTO.builder()
                 .researchIds(researchIds)
                 .build();
@@ -108,10 +115,11 @@ public class ResearchServiceImpl implements ResearchService {
 
     @Override
     public ResearchStatusRespDTO getResearchStatus(Long userId, String researchId) {
-        LambdaQueryWrapper<ResearchSession> queryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
-                .eq(ResearchSession::getId, researchId)
-                .eq(ResearchSession::getUserId, userId);
-        ResearchSession researchSession = researchSessionMapper.selectOne(queryWrapper);
+        if (!cacheUtil.verifyResearchOwnership(researchId, userId)) {
+            throw new ResearchException("研究任务不存在或无权限访问");
+        }
+
+        ResearchSession researchSession = researchSessionMapper.selectById(researchId);
         if (researchSession == null) {
             throw new ResearchException("研究任务不存在");
         }
@@ -130,27 +138,31 @@ public class ResearchServiceImpl implements ResearchService {
 
     @Override
     public ResearchMessageRespDTO getResearchMessages(Long userId, String researchId) {
-        // TODO：权限验证，该 Research 属于该用户，升级到缓存，在获取状态时 add 缓存
-        LambdaQueryWrapper<ResearchSession> checkQueryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
-                .eq(ResearchSession::getUserId, userId)
-                .eq(ResearchSession::getId, researchId);
-        ResearchSession researchSession = researchSessionMapper.selectOne(checkQueryWrapper);
+        if (!cacheUtil.verifyResearchOwnership(researchId, userId)) {
+            throw new ResearchException("研究任务不存在或无权限访问");
+        }
+
+        ResearchSession researchSession = researchSessionMapper.selectById(researchId);
         if (researchSession == null) {
             throw new ResearchException("研究任务不存在");
         }
 
-        // TODO: 缓存优化
-        LambdaQueryWrapper<ChatMessage> chatMessageQueryWrapper = Wrappers.lambdaQuery(ChatMessage.class)
-                .eq(ChatMessage::getResearchId, researchId);
-
-        LambdaQueryWrapper<WorkflowEvent> workflowEventQueryWrapper = Wrappers.lambdaQuery(WorkflowEvent.class)
-                .eq(WorkflowEvent::getResearchId, researchId);
+        // 使用缓存获取 Timeline
+        List<TimelineItem> timeline = cacheUtil.getTimeline(researchId, 0);
+        List<ChatMessage> messages = timeline.stream()
+                .filter(t -> "message".equals(t.getKind()))
+                .map(TimelineItem::getMessage)
+                .toList();
+        List<WorkflowEvent> events = timeline.stream()
+                .filter(t -> "event".equals(t.getKind()))
+                .map(TimelineItem::getEvent)
+                .toList();
 
         return ResearchMessageRespDTO.builder()
                 .id(researchSession.getId())
                 .status(researchSession.getStatus())
-                .messages(chatMessageMapper.selectList(chatMessageQueryWrapper))
-                .events(workflowEventMapper.selectList(workflowEventQueryWrapper))
+                .messages(messages)
+                .events(events)
                 .startTime(researchSession.getStartTime())
                 .updateTime(researchSession.getUpdateTime())
                 .completeTime(researchSession.getCompleteTime())

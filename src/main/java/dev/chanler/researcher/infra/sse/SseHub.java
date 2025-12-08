@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.NumberUtil;
 import cn.hutool.core.util.StrUtil;
 import dev.chanler.researcher.infra.data.TimelineItem;
+import dev.chanler.researcher.infra.exception.ResearchException;
 import dev.chanler.researcher.infra.util.CacheUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -71,7 +72,9 @@ public class SseHub {
     }
 
     public SseEmitter connect(Long userId, String researchId, String clientId, String lastEventId) {
-        // TODO: 权限校验
+        if (!cacheUtil.verifyResearchOwnership(researchId, userId)) {
+            throw new ResearchException("研究任务不存在或无权限访问");
+        }
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         emitter.onCompletion(() -> remove(researchId, clientId));
         emitter.onTimeout(() -> remove(researchId, clientId));

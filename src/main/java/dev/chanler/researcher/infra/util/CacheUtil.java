@@ -8,8 +8,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.chanler.researcher.domain.entity.ChatMessage;
 import dev.chanler.researcher.domain.entity.WorkflowEvent;
+import dev.chanler.researcher.domain.entity.ResearchSession;
 import dev.chanler.researcher.domain.mapper.ChatMessageMapper;
 import dev.chanler.researcher.domain.mapper.WorkflowEventMapper;
+import dev.chanler.researcher.domain.mapper.ResearchSessionMapper;
 import dev.chanler.researcher.infra.data.TimelineItem;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,7 @@ public class CacheUtil {
 
     private final ChatMessageMapper chatMessageMapper;
     private final WorkflowEventMapper workflowEventMapper;
+    private final ResearchSessionMapper researchSessionMapper;
     private final SequenceUtil sequenceUtil;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
@@ -40,6 +43,9 @@ public class CacheUtil {
     private static final String KIND_EVENT = "event";
     private static final String TIMELINE_KEY = "research:{}:timeline";
     private static final long TIMELINE_TTL_MINUTES = 30;
+
+    // 用户研究集合：user:{userId}:researches -> Set<researchId>
+    private static final String USER_RESEARCHES_KEY = "user:{}:researches";
 
     public TimelineItem saveMessage(String researchId, String role, String content) {
         int seq = sequenceUtil.next(researchId);
@@ -197,5 +203,41 @@ public class CacheUtil {
             log.error("JSON 反序列化为 TimelineItem 失败 json={}", json, e);
             return null;
         }
+    }
+
+    /**
+     * 验证 researchId 是否属于 userId
+     */
+    public boolean verifyResearchOwnership(String researchId, Long userId) {
+        String key = StrUtil.format(USER_RESEARCHES_KEY, userId);
+        Boolean isMember = stringRedisTemplate.opsForSet().isMember(key, researchId);
+        
+        if (Boolean.TRUE.equals(isMember)) {
+            return true;
+        }
+
+        // 缓存未命中，回源 DB 兜底
+        LambdaQueryWrapper<ResearchSession> queryWrapper = Wrappers.lambdaQuery(ResearchSession.class)
+                .eq(ResearchSession::getId, researchId)
+                .eq(ResearchSession::getUserId, userId);
+        ResearchSession session = researchSessionMapper.selectOne(queryWrapper);
+
+        if (session != null) {
+            stringRedisTemplate.opsForSet().add(key, researchId);
+            log.debug("权限验证成功，已缓存 userId={}, researchId={}", userId, researchId);
+            return true;
+        }
+
+        log.debug("权限验证失败 userId={}, researchId={}", userId, researchId);
+        return false;
+    }
+
+    /**
+     * 缓存研究的所有权关系
+     */
+    public void cacheResearchOwnership(String researchId, Long userId) {
+        String key = StrUtil.format(USER_RESEARCHES_KEY, userId);
+        stringRedisTemplate.opsForSet().add(key, researchId);
+        log.debug("缓存权限映射 userId={}, researchId={}", userId, researchId);
     }
 }
