@@ -36,11 +36,11 @@ export interface SendMessageResponse {
 
 export interface ResearchStatusResponse {
   id: string;
-  title?: string;
-  model?: string;
   status: string;
+  title?: string;
+  modelId?: string;
+  budget?: string;
   startTime?: string;
-  updateTime?: string;
   completeTime?: string;
   totalInputTokens?: number;
   totalOutputTokens?: number;

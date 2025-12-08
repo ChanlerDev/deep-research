@@ -21,7 +21,8 @@ type ViewState = 'home' | 'loading' | 'chat' | 'failed';
 interface ResearchState {
   id: string;
   title: string;
-  model?: string;
+  modelId?: string;
+  budget?: string;
   status: string;
   messages: ChatMessage[];
   events: WorkflowEvent[];
@@ -254,7 +255,7 @@ function Sidebar({ isOpen, toggle }: { isOpen: boolean; toggle: () => void }) {
         ) : (
           <div className="space-y-1">
             {history.map((item) => {
-              const modelInfo = item.model ? modelDictionary[item.model] : null;
+              const modelInfo = item.modelId ? modelDictionary[item.modelId] : null;
               const modelDisplayName = modelInfo?.name || modelInfo?.model || null;
               return (
                 <Link
@@ -548,15 +549,16 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
       setCurrentResearch(prev => {
         if (!prev || prev.id !== researchId) return prev;
         const nextTitle = statusResp.title || prev.title;
-        const nextModel = statusResp.model || prev.model;
-        if (prev.status !== statusResp.status || prev.title !== nextTitle || prev.model !== nextModel) {
+        const nextModel = statusResp.modelId || prev.modelId;
+        if (prev.status !== statusResp.status || prev.title !== nextTitle || prev.modelId !== nextModel) {
           hasChanged = true;
         }
         return {
           ...prev,
           status: statusResp.status,
           title: nextTitle,
-          model: nextModel,
+          modelId: nextModel,
+          budget: statusResp.budget ?? prev.budget,
           startTime: statusResp.startTime ?? prev.startTime,
           completeTime: statusResp.completeTime ?? prev.completeTime,
           totalInputTokens: statusResp.totalInputTokens ?? prev.totalInputTokens,
@@ -620,7 +622,8 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
       let newState: ResearchState = {
         id: researchId,
         title: status.title || 'Untitled',
-        model: status.model || undefined,
+        modelId: status.modelId || undefined,
+        budget: status.budget || undefined,
         status: status.status,
         messages: [],
         events: []
@@ -772,8 +775,8 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
     if (!inputValue.trim()) return;
     const content = inputValue.trim();
     setInputValue('');
-    const resolvedModelId = currentResearch?.model || selectedModelId;
-    const needsModelSelection = !id || !currentResearch?.model;
+    const resolvedModelId = currentResearch?.modelId || selectedModelId;
+    const needsModelSelection = !id || !currentResearch?.modelId;
     if (needsModelSelection && !resolvedModelId) {
       setError('当前没有可用模型，请先在「模型管理」中添加。');
       setInputValue(content);
@@ -799,7 +802,7 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
         setCurrentResearch({
           id: newId,
           title: 'Untitled',
-          model: selectedModelId,
+          modelId: selectedModelId,
           status: 'RUNNING',
           messages: [tempMessage],
           events: []
@@ -832,13 +835,13 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
       content,
       createTime: new Date().toISOString()
     };
-    const shouldAttachModel = !currentResearch.model;
+    const shouldAttachModel = !currentResearch.modelId;
     const modelConfig = shouldAttachModel ? { modelId: resolvedModelId, budget: selectedBudget } : undefined;
 
     setCurrentResearch(prev => prev ? {
       ...prev,
       status: 'RUNNING',
-      model: shouldAttachModel ? resolvedModelId : prev.model,
+      modelId: shouldAttachModel ? resolvedModelId : prev.modelId,
       messages: [...prev.messages, userMsg]
     } : prev);
 
@@ -904,12 +907,18 @@ function ResearchPage({ sidebarOpen = true }: { sidebarOpen?: boolean }) {
                   <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
                   <span className="text-xs text-gray-500">{currentResearch.status}</span>
                 </div>
-                {currentResearch.model && (
+                {currentResearch.modelId && (
                   <div className="flex items-center gap-1.5 text-xs text-gray-500">
                     <Brain className="w-3 h-3" />
                     <span>
-                      模型：{modelDictionary[currentResearch.model]?.name || modelDictionary[currentResearch.model]?.model || currentResearch.model}
+                      模型：{modelDictionary[currentResearch.modelId]?.name || modelDictionary[currentResearch.modelId]?.model || currentResearch.modelId}
                     </span>
+                  </div>
+                )}
+                {currentResearch.budget && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Coins className="w-3 h-3" />
+                    <span>预算：{BUDGET_OPTIONS.find(b => b.value === currentResearch.budget)?.label || currentResearch.budget}</span>
                   </div>
                 )}
                 {/* Token stats */}
