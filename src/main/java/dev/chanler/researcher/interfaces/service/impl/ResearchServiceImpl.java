@@ -97,20 +97,18 @@ public class ResearchServiceImpl implements ResearchService {
                 .eq(ResearchSession::getUserId, userId)
                 .orderByDesc(ResearchSession::getUpdateTime);
         List<ResearchSession> sessions = researchSessionMapper.selectList(queryWrapper);
-        
-        return sessions.stream().map(session -> {
-            return ResearchStatusRespDTO.builder()
-                .id(session.getId())
-                .title(session.getTitle())
-                .model(session.getModelId())
-                .status(session.getStatus())
-                .startTime(session.getStartTime())
-                .updateTime(session.getUpdateTime())
-                .completeTime(session.getCompleteTime())
-                .totalInputTokens(session.getTotalInputTokens())
-                .totalOutputTokens(session.getTotalOutputTokens())
-                .build();
-        }).collect(Collectors.toList());
+
+        return sessions.stream().map(session -> ResearchStatusRespDTO.builder()
+            .id(session.getId())
+            .status(session.getStatus())
+            .title(session.getTitle())
+            .modelId(session.getModelId())
+            .budget(session.getBudget())
+            .startTime(session.getStartTime())
+            .completeTime(session.getCompleteTime())
+            .totalInputTokens(session.getTotalInputTokens())
+            .totalOutputTokens(session.getTotalOutputTokens())
+            .build()).collect(Collectors.toList());
     }
 
     @Override
@@ -125,11 +123,11 @@ public class ResearchServiceImpl implements ResearchService {
         }
         return ResearchStatusRespDTO.builder()
                 .id(researchSession.getId())
-                .title(researchSession.getTitle())
-                .model(researchSession.getModelId())
                 .status(researchSession.getStatus())
+                .title(researchSession.getTitle())
+                .modelId(researchSession.getModelId())
+                .budget(researchSession.getBudget())
                 .startTime(researchSession.getStartTime())
-                .updateTime(researchSession.getUpdateTime())
                 .completeTime(researchSession.getCompleteTime())
                 .totalInputTokens(researchSession.getTotalInputTokens())
                 .totalOutputTokens(researchSession.getTotalOutputTokens())
