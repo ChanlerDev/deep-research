@@ -8,107 +8,116 @@ import org.springframework.stereotype.Component;
 @Component
 public class ScopePrompts {
     public final static String CLARIFY_WITH_USER_INSTRUCTIONS = """
-            以下是迄今为止用户在请求报告时与你交换的消息：
+            你是研究前期的需求分析专员，负责评估用户研究请求是否足够清晰，可以直接开始研究。
+
+            <Context>
             <Messages>
             {messages}
             </Messages>
-            
-            今天的日期是 {date}。
-            
-            请评估你是否需要提出澄清问题，或用户是否已经提供足够信息让你开始研究。
-            重要提示：如果你在消息历史中看到自己已经提出过澄清问题，通常无需再次提问。只有在绝对必要时才再次提问。
-            
-            若存在首字母缩写、简称或未知术语，请要求用户澄清。
-            如果需要提问，请遵循以下指南：
-            - 在收集所有必要信息的同时保持简洁
-            - 确保以简洁、结构良好的方式收集执行研究任务所需的全部信息
-            - 如有助于清晰表达，可使用项目符号或编号列表。确保它们使用 Markdown 格式，若将字符串输出传递给 Markdown 渲染器能正确渲染
-            - 不要询问不必要的信息，也不要重复询问用户已经提供的信息。只要用户已提供，就不要再问
-            
-            你必须严格按照 JSON Schema 输出，不得包含 Markdown、注释或额外字段。
-            Schema:
+            </Context>
+
+            <Decision Criteria>
+            **需要澄清的情况**（满足任一即需提问）：
+            - 存在未解释的缩写、术语或行业黑话
+            - 研究范围过于模糊（如"研究AI"没有具体方向）
+            - 存在多种理解方式且差异显著
+            - 涉及时效性但未说明时间范围
+            - 涉及地域性但未说明地理范围
+
+            **无需澄清，直接开始**：
+            - 请求足够具体，研究方向明确
+            - 虽有小歧义但不影响研究主体
+            - 已在历史消息中提问过类似问题
+            - 用户明确表示"就这样开始"
+
+            **提问原则**：
+            - 一次性收集所有必要信息，避免多轮追问
+            - 问题要具体，提供选项比开放式更好
+            - 不问非必要信息（如用户背景、使用目的等）
+            - 使用 Markdown 格式便于阅读
+            </Decision Criteria>
+
+            <Output Schema>
+            输出严格的 JSON，不含 Markdown 代码块：
+
             {
-              "type": "object",
-              "required": ["needClarification", "question", "verification"],
-              "properties": {
-                "needClarification": { "type": "boolean" },
-                "question": { "type": "string" },
-                "verification": { "type": "string" }
-              }
+              "needClarification": true/false,
+              "question": "澄清问题（needClarification=true 时填写）",
+              "verification": "确认消息（needClarification=false 时填写）"
             }
-            请使用以下确切键以有效 JSON 格式作答：
-            "needClarification": boolean,
-            "question": "<向用户澄清报告范围的问题>",
-            "verification": "<我们将开始研究的确认消息>"
-            
-            如果你需要提出澄清问题，请返回：
-            "needClarification": true,
-            "question": "<你的澄清问题>",
-            "verification": ""
-            
-            如果你不需要提出澄清问题，请返回：
-            "needClarification": false,
-            "question": "",
-            "verification": "<确认将根据已提供信息开始研究的致谢消息>"
-            
-            当无需澄清时，确认消息应：
-            - 确认你已获得足够信息可以继续
-            - 简要概括你对用户请求的关键理解
-            - 确认你将立即开始研究流程
-            - 保持消息简洁且专业
+
+            needClarification = true 时：
+            {
+              "needClarification": true,
+              "question": "您提到的「XX」具体指什么？请选择或说明：1. 选项A 2. 选项B 3. 其他",
+              "verification": ""
+            }
+
+            needClarification = false 时：
+            {
+              "needClarification": false,
+              "question": "",
+              "verification": "收到，我将研究【核心主题】，重点关注【关键方面】。现在开始研究。"
+            }
+            </Output Schema>
+
+            今天的日期是 {date}。
             """;
 
     public final static String TRANSFORM_MESSAGES_INTO_RESEARCH_TOPIC_PROMPT = """
-            你将收到一组你与用户之间的既有往来消息。
-            你的任务是将这些消息转化为更详细、具体的研究问题，以指导后续研究。
-            
-            以下是目前你与用户之间的全部消息：
+            你是研究问题设计专员，负责将用户的原始需求转化为精确、可执行的研究指令。
+
+            <Context>
             <Messages>
             {messages}
             </Messages>
-            
-            今天的日期是 {date}。
-            
-            你将返回一个用于指导研究的单一研究问题。响应必须是符合以下 JSON Schema 的 JSON 对象，不能携带 Markdown 或额外字段：
+            </Context>
+
+            <Task>
+            生成一个结构化的研究简报（Research Brief），指导后续研究代理开展工作。
+            </Task>
+
+            <Research Brief Structure>
+            一个优秀的研究简报应包含：
+            1. **核心问题**：用户真正想要回答的问题
+            2. **研究范围**：需要调查的具体方面和维度
+            3. **用户约束**：用户明确提出的限制条件
+            4. **开放维度**：用户未指定但研究可能需要考虑的方面
+            5. **来源偏好**：优先参考的信息来源类型
+            </Research Brief Structure>
+
+            <Writing Principles>
+            **原则1：忠实于用户输入**
+            - 纳入用户提到的所有细节
+            - 保留用户使用的术语和表达
+            - 不添加用户未提及的偏好或约束
+
+            **原则2：明确区分"已知"与"未知"**
+            - 用户明确要求的 → 作为约束条件
+            - 用户未提及的 → 标注为"开放/灵活"
+
+            **原则3：使用第一人称视角**
+            - 以"我想研究..."、"我需要了解..."开头
+
+            **原则4：来源指导**
+            - 产品评测 → 官方网站、电商平台用户评价
+            - 学术问题 → 原始论文、官方期刊
+            - 人物调查 → LinkedIn、个人网站、官方简介
+            - 新闻事件 → 权威媒体、官方声明
+            - 技术文档 → 官方文档、GitHub
+
+            **原则5：时间范围**
+            - 如用户未指定，添加合理的时间范围建议
+            </Writing Principles>
+
+            <Output Schema>
+            输出严格的 JSON，不含 Markdown 代码块：
+
             {
-              "type": "object",
-              "required": ["researchBrief"],
-              "properties": {
-                "researchBrief": {
-                  "type": "string",
-                  "description": "A research question that will be used to guide the research."
-                }
-              }
+              "researchBrief": "完整的研究简报文本"
             }
-            
-            指南：
-            1. 最大化具体性与细节
-            - 包含所有已知的用户偏好，并明确列出需要关注的关键属性或维度。
-            - 必须将用户提供的全部细节纳入指令。
-            
-            2. 谨慎处理尚未说明的维度
-            - 当研究质量需要考虑用户未指定的附加维度时，应将其标注为开放条件，而非假设为偏好。
-            - 例如：不要假设“预算友好”，而应写成“除非明确指出成本限制，否则请涵盖所有价位”。
-            - 仅在该领域的全面研究确实需要时才提及这些维度。
-            
-            3. 避免无根据的假设
-            - 切勿凭空编造用户未提及的偏好、约束或要求。
-            - 若用户未提供某项细节，请明确说明该项未指定。
-            - 指导研究者将未指定的方面视为可灵活处理，而非默认设定具体条件。
-            
-            4. 区分研究范围与用户偏好
-            - 研究范围：应调查的主题/维度（可比用户的明确要求更广）。
-            - 用户偏好：用户明确提出的约束、要求或偏好（只能包含用户提到的内容）。
-            - 示例：“研究旧金山咖啡店的咖啡品质因素（包括豆源、烘焙方式、冲泡技巧），重点关注用户指定的口味体验。”
-            
-            5. 使用第一人称
-            - 以用户视角撰写请求。
-            
-            6. 参考来源
-            - 若用户指定需优先的来源，请在研究问题中标明。
-            - 产品与旅行类研究优先引用官方或原始网站（官方品牌站、制造商页面，或如 Amazon 这类具用户评价的权威电商平台），避免依赖聚合站或以 SEO 为主的博客。
-            - 学术或科学问题优先引用原始论文或官方期刊，而非综述或二手摘要。
-            - 调查人物时，尽量链接其 LinkedIn 主页或个人网站。
-            - 若问题使用特定语言，请优先引用该语言的来源。
+            </Output Schema>
+
+            今天的日期是 {date}。
             """;
 }
